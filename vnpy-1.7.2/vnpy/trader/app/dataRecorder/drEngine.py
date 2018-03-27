@@ -43,7 +43,7 @@ class DrEngine(object):
         self.loadSetting()
         ## ------------------
         
-        self.myHeader   = ['timeStamp','date','time','symbol','exchange',
+        self.tickHeader   = ['timeStamp','date','time','symbol','exchange',
                           'lastPrice','preSettlementPrice','preClosePrice',
                           'openPrice','highestPrice','lowestPrice','closePrice',
                           'upperLimit','lowerLimit','settlementPrice','volume','turnover',
@@ -66,7 +66,7 @@ class DrEngine(object):
         if not os.path.exists(self.dataFile):
             with open(self.dataFile, 'w') as f:
                 wr = csv.writer(f)
-                wr.writerow(self.myHeader)
+                wr.writerow(self.tickHeader)
             f.close()
         ########################################################################
 
@@ -75,7 +75,7 @@ class DrEngine(object):
         self.DAY_END     = time(15, 30)
         
         self.NIGHT_START = time(20, 00)      # 夜盘启动和停止时间
-        self.NIGHT_END   = time(2, 45)
+        self.NIGHT_END   = time(2, 35)
         self.exitCounter = 0
         ## =====================================================================
 
@@ -114,13 +114,10 @@ class DrEngine(object):
     def procecssTickEvent(self, event):
         """处理行情事件"""
         tick = event.dict_['data']
-        # 生成datetime对象
-        if not tick.datetime:
-            tick.datetime = datetime.strptime(' '.join([tick.date, tick.time]),
-                                              '%Y%m%d %H:%M:%S.%f')     
+
         ## ---------------------------------------------------------------------
         ## william     
-        data = [tick.__dict__[k] for k in self.myHeader]  
+        data = [tick.__dict__[k] for k in self.tickHeader]  
         ## ---------------------------------------------------------------------
         
         ## =====================================================================
