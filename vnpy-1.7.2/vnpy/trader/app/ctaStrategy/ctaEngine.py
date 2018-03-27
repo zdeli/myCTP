@@ -63,6 +63,7 @@ class CtaEngine(object):
         self.eventEngine = eventEngine
         self.accountID   = globalSetting.accountID
         self.accountName = globalSetting.accountName
+        self.dataBase    = self.accountID
 
         ## =====================================================================
         ## william
@@ -84,7 +85,12 @@ class CtaEngine(object):
         self.tradingDate = vtFunction.tradingDate()
         self.lastTradingDay = vtFunction.lastTradingDay()
         self.lastTradingDate = vtFunction.lastTradingDate()
-        
+
+        self.sendMailTime = datetime.now()
+        self.sendMailStatus = False
+        self.sendMailContent = u''
+        self.sendMailCounter = 0
+
         # 保存策略实例的字典
         # key为策略名称，value为策略实例，注意策略名称不允许重复
         self.strategyDict = {}
@@ -111,7 +117,20 @@ class CtaEngine(object):
                                   'bidVolume1', 'askVolume1',
                                   'upperLimit','lowerLimit'
                                   ]
-        
+        self.lastBarDict       = {}
+        ## ---------------------------------------------------------------------
+        ## 提取 lastTick
+        try:
+            df = vtFunction.fetchMySQL(db = self.dataBase, 
+                query = 'select * from lastTickInfo where TradingDay = %s' %self.tradingDay)
+            if len(df):
+                df.rename(columns = {'updateTime':'datetime'}, inplace = True)
+                for i in range(len(df)):
+                    self.lastTickDict[df.at[i, 'vtSymbol']] = dict(df.ix[i])
+        except:
+            self.writeCtaLog(u'没有 lastTickInfo 数据')
+        ## ---------------------------------------------------------------------
+
         # 保存vtOrderID和strategy对象映射的字典（用于推送order和trade数据）
         # key   为 vtOrderID，
         # value 为 strategy对象
@@ -425,7 +444,7 @@ class CtaEngine(object):
             if tick.vtSymbol in self.lastTickDict.keys():
                 tick.highestPrice = max(tick.highestPrice, 
                                         self.lastTickDict[tick.vtSymbol]['highestPrice'])
-                tick.lowestPrice = max(tick.lowestPrice, 
+                tick.lowestPrice = min(tick.lowestPrice, 
                                        self.lastTickDict[tick.vtSymbol]['lowestPrice'])
             ## -------------------------------------------------------------------------------------
             self.lastTickDict[tick.vtSymbol] = {k:tick.__dict__[k] for k in self.lastTickFileds}
@@ -806,7 +825,19 @@ class CtaEngine(object):
             content = '\n'.join([u'策略%s触发异常已停止' %strategy.name,
                                 traceback.format_exc()])
             ## -----------------------------
-            self.sendMail(content = content)
+            self.sendMailContent += content
+
+            if not self.sendMailStatus:
+                self.sendMailStatus = True
+                self.sendMail(content = self.sendMailContent)
+                self.sendMailTime = datetime.now()
+            elif ((datetime.now() - self.sendMailTime).seconds > 30 and 
+                  (self.sendMailCounter < 10)):
+                self.sendMail(content = self.sendMailContent)
+                self.sendMailTime = datetime.now()
+                self.sendMailContent = u''
+                self.sendMailCounter += 1
+                
             ## -----------------------------
             self.writeCtaLog(content)
             
@@ -905,7 +936,7 @@ class CtaEngine(object):
         ## 显示:收件人
         message['To']   =  Header('汉云交易员', 'utf-8')
         ## 主题
-        subject = self.tradingDay + '：' + self.accountName + '!!! 启禀大王，你家后院着火了!!!'
+        subject = self.tradingDay + '：' + self.accountName + u'~~ 启禀大王，你家后院着火了 ~~'
         message['Subject'] = Header(subject, 'utf-8')
 
         ## ---------------------------------------------------------------------
