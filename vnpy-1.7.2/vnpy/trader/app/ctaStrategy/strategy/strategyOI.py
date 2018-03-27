@@ -10,7 +10,7 @@ import os,sys,subprocess
 from vnpy.trader.vtObject import VtBarData
 from vnpy.trader.vtConstant import EMPTY_STRING
 from vnpy.trader.app.ctaStrategy.ctaTemplate import (CtaTemplate, 
-                                                     BarManager, 
+                                                     BarGenerator, 
                                                      ArrayManager)
 from vnpy.trader.vtEvent import *
 from vnpy.trader import vtFunction
@@ -23,8 +23,8 @@ from datetime import *
 import time
 import pprint
 from copy import copy
-import math, random
-import re,ast,json
+import math,random
+import re,ast,json,csv
 ## -----------------------------------------------------------------------------
 from vnpy.trader.vtGlobal import globalSetting
 
@@ -70,12 +70,14 @@ class OIStrategy(CtaTemplate):
     tradingOrdersUpperLower = {}       # 以涨跌停价格的订单
     tradingOrdersUpperLowerCum = {}    # 以涨跌停价格的订单 ==> 开盘前1分钟先累计
     tradingOrdersFailedInfo = {}       # 上一个交易日没有完成的订单,需要优先处理
+    tradingOrdersWinner     = {}       # 止盈平仓单
     ## -------------------------------------------------------------------------
     tradedOrders            = {}       # 当日订单完成的情况
     tradedOrdersOpen        = {}       # 当日开盘完成的已订单
     tradedOrdersClose       = {}       # 当日收盘完成的已订单
     tradedOrdersFailedInfo  = {}       # 昨天未成交订单的已交易订单
     tradedOrdersUpperLower  = {}       # 已经成交的涨跌停订单
+    tradedOrdersWinner      = {}       # 已经成交的止盈单
     ## -------------------------------------------------------------------------
 
     ## -------------------------------------------------------------------------
@@ -87,6 +89,9 @@ class OIStrategy(CtaTemplate):
     vtOrderIDListFailedInfo = []       # 失败的合约订单存储
     vtOrderIDListUpperLower = []       # 涨跌停价格成交的订单
     vtOrderIDListUpperLowerCum = []    # 涨跌停价格成交的订单
+    vtOrderIDListUpperLowerTempCum = []    # 涨跌停价格成交的订单
+    vtOrderIDListWinner     = []       # 止盈平仓单
+    vtOrderIDListTempWinner = []       # 止盈平仓单
     vtOrderIDListAll        = []       # 所有订单集合
     
     ## 子订单的拆单比例实现
@@ -95,6 +100,10 @@ class OIStrategy(CtaTemplate):
                       'level2':{'weight': 0, 'deltaTick': 2}
                      }
     totalOrderLevel = 1 + (len(subOrdersLevel) - 1) * 2
+
+    barHeader = ['date','time','symbol','exchange',
+                 'open','high','low','close',
+                 'volume','turnover']
     ## -------------------------------------------------------------------------
 
     #----------------------------------------------------------------------
@@ -102,6 +111,12 @@ class OIStrategy(CtaTemplate):
         """Constructor"""
         ## 从　ctaEngine 继承所有属性和方法
         super(OIStrategy, self).__init__(ctaEngine, setting)
+
+        ## =====================================================================
+        # 创建K线合成器对象
+        self.bg = BarGenerator(self.onBar)
+        # self.am = ArrayManager()
+        ## =====================================================================
 
         ## =====================================================================
         ## 交易时点
@@ -172,8 +187,90 @@ class OIStrategy(CtaTemplate):
             """ %(self.strategyID, self.ctaEngine.tradingDate))
         if len(tempCum):
             for i in range(len(tempCum)):
-                self.vtOrderIDListUpperLowerCum.extend(ast.literal_eval(tempCum.ix[i,'vtOrderIDList']))
+                self.vtOrderIDListUpperLowerTempCum.extend(ast.literal_eval(tempCum.ix[i,'vtOrderIDList']))
         ## =====================================================================
+
+        ## =====================================================================
+        ## 涨跌停的订单
+        tempWinner = vtFunction.dbMySQLQuery(
+            self.ctaEngine.mainEngine.dataBase,
+            """
+            SELECT *
+            FROM workingInfo
+            WHERE strategyID = '%s'
+            AND TradingDay = '%s'
+            AND stage = 'winner'
+            """ %(self.strategyID, self.ctaEngine.tradingDate))
+        if len(tempWinner):
+            for i in range(len(tempWinner)):
+                self.vtOrderIDListTempWinner.extend(ast.literal_eval(tempWinner.ix[i,'vtOrderIDList']))
+        
+        ## =====================================================================
+        mysqlpositionInfo = vtFunction.dbMySQLQuery(
+            self.ctaEngine.mainEngine.dataBase,
+            """
+            SELECT *
+            FROM positionInfo
+            WHERE strategyID = '%s'
+            """ %(self.strategyID))
+        
+        if len(mysqlpositionInfo):
+            for i in range(len(mysqlpositionInfo)):
+                ## -------------------------------------------------
+                if mysqlpositionInfo.at[i, 'direction'] == u'long':
+                    tempDirection = u'sell'
+                elif mysqlpositionInfo.at[i, 'direction'] == u'short':
+                    tempDirection = u'cover'
+                ## -------------------------------------------------
+                id = mysqlpositionInfo.at[i, 'InstrumentID']
+                tempKey = id + '-' + tempDirection
+                x = tempWinner.loc[tempWinner.vtSymbol == id]
+
+                if len(x):
+                    ## 如果已经有了下单的
+                    y = mysqlpositionInfo.at[i, 'volume'] - int(x['volume'].values)
+                    if y > 0:
+                        tempVolume = y
+                    else:
+                        tempVolume = 0
+                else:
+                    ##　如果没有下单
+                    tempVolume = mysqlpositionInfo.at[i, 'volume']
+
+                if tempVolume:
+                    self.tradingOrdersWinner[tempKey] = {
+                            'vtSymbol'      : id,
+                            'direction'     : tempDirection,
+                            'volume'        : tempVolume,
+                            'TradingDay'    : mysqlpositionInfo.at[i, 'TradingDay'],
+                            'vtOrderIDList' : []
+                            }
+        ## =====================================================================
+
+        ## =====================================================================
+        ## 止盈平仓参数
+        self.winnerParam = {}
+        tradingSignal = self.fetchMySQL(query = "select InstrumentID as vtSymbol,direction,volume,param from tradingSignal where TradingDay = %s and strategyID = '%s'" %(self.ctaEngine.lastTradingDay, self.strategyID))
+        if len(tradingSignal):
+            for i in range(len(tradingSignal)):
+                k = tradingSignal.at[i, 'vtSymbol']
+                self.winnerParam[k] = dict(tradingSignal.iloc[i])
+                self.winnerParam[k]['param'] = float(self.winnerParam[k]['param'])
+                self.winnerParam[k]['priceTick'] = self.ctaEngine.tickInfo[k]['priceTick']
+        # pprint(stratOI.winnerParam)
+        ## =====================================================================
+
+        ########################################################################
+        self.DATA_PATH    = os.path.normpath(os.path.join(
+                            globalSetting().vtSetting['DATA_PATH'], 
+                            globalSetting.accountID, 'BarData'))
+        self.dataFile     = os.path.join(self.DATA_PATH,(str(self.tradingDay) + '.csv'))
+        if not os.path.exists(self.dataFile):
+            with open(self.dataFile, 'w') as f:
+                wr = csv.writer(f)
+                wr.writerow(self.barHeader)
+            f.close()
+        ########################################################################
 
         ########################################################################
         ## william
@@ -181,7 +278,7 @@ class OIStrategy(CtaTemplate):
         self.registerEvent()
         ########################################################################
 
-    #----------------------------------------------------------------------
+    #---------------------------------------------------------------------------
     def onInit(self):
         """初始化策略（必须由用户继承实现）"""
         self.writeCtaLog(u'%s策略初始化' %self.name)
@@ -207,6 +304,10 @@ class OIStrategy(CtaTemplate):
                   pprint.pformat(self.tradingOrdersOpen),
                   '-'*80))
 
+        ## =====================================================================
+
+        ## =====================================================================
+
         ## ---------------------------------------------------------------------
         try:
             self.positionContracts = self.ctaEngine.mainEngine.dataEngine.positionInfo.keys()
@@ -224,30 +325,32 @@ class OIStrategy(CtaTemplate):
         self.putEvent()
         ## =====================================================================
 
-    #----------------------------------------------------------------------
+    #---------------------------------------------------------------------------
     def onTick(self, tick):
         """收到行情TICK推送（必须由用户继承实现）"""
+        id = tick.vtSymbol
+
+        self.bg.updateTick(tick)
+        # ## =====================================================================
+        # if id in self.tradingOrdersWinner.keys():
+        #     self.bg.updateTick(tick)
+        # ## =====================================================================
 
         ## =====================================================================
         if not self.trading:
             return 
         elif tick.datetime <= (datetime.now() - timedelta(seconds=30)):
             return
-        # elif tick.vtSymbol not in [self.tradingOrdersOpen[k]['vtSymbol'] for k in self.tradingOrdersOpen.keys()] + \
-        # [self.tradingOrdersClose[k]['vtSymbol'] for k in self.tradingOrdersClose.keys()] + \
-        # [self.tradingOrdersFailedInfo[k]['vtSymbol'] for k in self.tradingOrdersFailedInfo.keys() +\
-        # self.tradingOrdersUpperLowerCum[k]['vtSymbol'] for k in self.tradingOrdersUpperLowerCum.keys() ]:
-        #     return 
-        # elif ((datetime.now() - self.tickTimer[tick.vtSymbol]).seconds <= 1):
-        #     return
-        # =====================================================================
+        elif ((datetime.now() - self.tickTimer[tick.vtSymbol]).seconds <= 1):
+            return
+        ## =====================================================================
 
         ########################################################################
         ## william
         ## =====================================================================
         if self.tradingOrdersFailedInfo and self.tradingStart:
             self.prepareTradingOrder(
-                vtSymbol      = tick.vtSymbol,
+                vtSymbol      = id,
                 tradingOrders = self.tradingOrdersFailedInfo,
                 orderIDList   = self.vtOrderIDListFailedInfo,
                 priceType     = 'chasing')
@@ -255,11 +358,11 @@ class OIStrategy(CtaTemplate):
 
         ## =====================================================================
         if ((self.tradingStart and not self.tradingEnd) and 
-            tick.vtSymbol in [self.tradingOrdersOpen[k]['vtSymbol'] 
+            id in [self.tradingOrdersOpen[k]['vtSymbol'] 
                              for k in self.tradingOrdersOpen.keys()]):
             ####################################################################
             # self.prepareTradingOrder(
-            #     vtSymbol      = tick.vtSymbol,
+            #     vtSymbol      = id,
             #     tradingOrders = self.tradingOrdersOpen,
             #     orderIDList   = self.vtOrderIDListOpen,
             #     priceType     = 'open',
@@ -267,7 +370,7 @@ class OIStrategy(CtaTemplate):
             #     addTick       = self.ctaEngine.mainEngine.openAddTickOI)
             ## -----------------------------------------------------------------
             self.prepareTradingOrderSplit(
-                vtSymbol      = tick.vtSymbol,
+                vtSymbol      = id,
                 tradingOrders = self.tradingOrdersOpen,
                 orderIDList   = self.vtOrderIDListOpen,
                 priceType     = 'limit',
@@ -276,12 +379,12 @@ class OIStrategy(CtaTemplate):
 
         ## =====================================================================
         if ((self.tradingBetween or self.tradingEnd) and 
-            tick.vtSymbol in [self.tradingOrdersClose[k]['vtSymbol'] 
+            id in [self.tradingOrdersClose[k]['vtSymbol'] 
                              for k in self.tradingOrdersClose.keys()]):
             if self.tradingBetween:
                 tempAddTick   = self.ctaEngine.mainEngine.closeAddTickOI
                 self.prepareTradingOrderSplit(
-                    vtSymbol      = tick.vtSymbol,
+                    vtSymbol      = id,
                     tradingOrders = self.tradingOrdersClose,
                     orderIDList   = self.vtOrderIDListClose,
                     priceType     = 'last',
@@ -289,7 +392,7 @@ class OIStrategy(CtaTemplate):
             elif self.tradingEnd:
                 tempAddTick   = 1
                 self.prepareTradingOrder(
-                    vtSymbol      = tick.vtSymbol,
+                    vtSymbol      = id,
                     tradingOrders = self.tradingOrdersClose,
                     orderIDList   = self.vtOrderIDListClose,
                     priceType     = 'chasing',
@@ -297,26 +400,71 @@ class OIStrategy(CtaTemplate):
         ## =====================================================================
 
         ## =====================================================================
-        if ((self.tradingStart and not (datetime.now().hour in [9,21] and datetime.now().minute < 10)) and 
-            tick.vtSymbol in [self.tradingOrdersUpperLowerCum[k]['vtSymbol'] 
-                             for k in self.tradingOrdersUpperLowerCum.keys()]):
+        # if ((self.tradingStart and not (datetime.now().hour in [9,21] and 
+        #     datetime.now().minute < 2)) and 
+        #     id in [self.tradingOrdersUpperLowerCum[k]['vtSymbol'] 
+        #                      for k in self.tradingOrdersUpperLowerCum.keys()]):
+        #     ## -----------------------------------------------------------------
+        #     ## -------------------------------------------------------------
+        #     ## 1. 「开多」 --> sell@upper
+        #     ## 2. 「开空」 --> cover@lower
+        #     tempDirection = [v['direction'] for v in self.tradingOrdersUpperLowerCum.values() 
+        #                                     if v['vtSymbol'] == id][0]
+        #     if tempDirection == 'sell':
+        #         tempPriceType = 'upper'
+        #     elif tempDirection == 'cover':
+        #         tempPriceType = 'lower'
+        #     ## -------------------------------------------------------------
+        #     self.prepareTradingOrder(
+        #         vtSymbol      = id,
+        #         tradingOrders = self.tradingOrdersUpperLowerCum,
+        #         orderIDList   = self.vtOrderIDListUpperLowerCum,
+        #         priceType     = tempPriceType,
+        #         addTick       = 1)
             ## -----------------------------------------------------------------
-            ## -------------------------------------------------------------
-            ## 1. 「开多」 --> sell@upper
-            ## 2. 「开空」 --> cover@lower
-            tempDirection = [v['direction'] for v in self.tradingOrdersUpperLowerCum.values() 
-                                            if v['vtSymbol'] == tick.vtSymbol][0]
-            if tempDirection == 'sell':
-                tempPriceType = 'upper'
-            elif tempDirection == 'cover':
-                tempPriceType = 'lower'
+        ## =====================================================================
+
+    ## =========================================================================
+    ## william
+    ## 处理 bar 数据
+    ## -------------------------------------------------------------------------
+    def onBar(self, bar):
+        """Bar 数据进来后触发事件"""
+        # data = [bar.__dict__[k] for k in self.barHeader]  
+        # print data
+        # ## ---------------------------------
+        # with open(self.dataFile, 'a') as f:
+        #     wr = csv.writer(f)
+        #     wr.writerow(data)
+        # ## ---------------------------------
+
+        ## =====================================================================
+        id = bar.vtSymbol
+        
+        if ( (not self.tradingStart) or 
+             (id not in [self.tradingOrdersWinner[k]['vtSymbol'] 
+                      for k in self.tradingOrdersWinner.keys()]) ):
+            return
+
+        h = self.ctaEngine.lastTickDict[id]['lowestPrice'] + self.winnerParam[id]['param'] * self.winnerParam[id]['priceTick']
+        l = self.ctaEngine.lastTickDict[id]['highestPrice'] - self.winnerParam[id]['param'] * self.winnerParam[id]['priceTick']
+
+        # h = self.ctaEngine.lastTickDict[id]['lowestPrice'] + 1 * self.winnerParam[id]['priceTick']
+        # l = self.ctaEngine.lastTickDict[id]['highestPrice'] - 1 * self.winnerParam[id]['priceTick']
+
+        if ( (self.winnerParam[id]['direction'] == '1' and (bar.high >= h)) or 
+             (self.winnerParam[id]['direction'] == '-1' and (bar.low <= l)) ):
+            # print 'sending winner'
+            self.writeCtaLog(u'发送 Winner Order: %s' %id)
+            tempDirection = [v['direction'] for v in self.tradingOrdersWinner.values() 
+                                            if v['vtSymbol'] == id][0]
             ## -------------------------------------------------------------
             self.prepareTradingOrder(
-                vtSymbol      = tick.vtSymbol,
-                tradingOrders = self.tradingOrdersUpperLowerCum,
-                orderIDList   = self.vtOrderIDListUpperLowerCum,
-                priceType     = tempPriceType,
-                addTick       = 1)
+                vtSymbol      = id,
+                tradingOrders = self.tradingOrdersWinner,
+                orderIDList   = self.vtOrderIDListWinner,
+                priceType     = 'limit',
+                price         = bar.close)
             ## -----------------------------------------------------------------
         ## =====================================================================
 
@@ -368,21 +516,24 @@ class OIStrategy(CtaTemplate):
         ## william
         ## 更新数量
         ## 更新交易日期
-        if self.stratTrade['vtOrderID'] in self.vtOrderIDListOpen:
+        if (self.stratTrade['vtOrderID'] in self.vtOrderIDListOpen and 
+            tempKey in self.tradingOrdersOpen.keys()):
             # ------------------------------------------------------------------
             self.tradingOrdersOpen[tempKey]['volume'] -= self.stratTrade['volume']
             if self.tradingOrdersOpen[tempKey]['volume'] == 0:
                 self.tradingOrdersOpen.pop(tempKey, None)
                 self.tradedOrdersOpen[tempKey] = tempKey
             # ------------------------------------------------------------------
-        elif self.stratTrade['vtOrderID'] in self.vtOrderIDListClose:
+        elif (self.stratTrade['vtOrderID'] in self.vtOrderIDListClose and 
+              tempKey in self.tradingOrdersClose.keys()):
             # ------------------------------------------------------------------
             self.tradingOrdersClose[tempKey]['volume'] -= self.stratTrade['volume']
             if self.tradingOrdersClose[tempKey]['volume'] == 0:
                 self.tradingOrdersClose.pop(tempKey, None)
                 self.tradedOrdersClose[tempKey] = tempKey
             # ------------------------------------------------------------------
-        elif self.stratTrade['vtOrderID'] in self.vtOrderIDListFailedInfo:
+        elif (self.stratTrade['vtOrderID'] in self.vtOrderIDListFailedInfo and
+              tempKey in self.tradingOrdersFailedInfo.keys()):
             # ------------------------------------------------------------------
             self.tradingOrdersFailedInfo[tempKey]['volume'] -= self.stratTrade['volume']
             if self.tradingOrdersFailedInfo[tempKey]['volume'] == 0:
@@ -391,13 +542,22 @@ class OIStrategy(CtaTemplate):
             ## 需要更新一下 failedInfo
             self.stratTrade['TradingDay'] = self.ctaEngine.lastTradingDate
             self.processTradingOrdersFailedInfo(self.stratTrade)
-        elif self.stratTrade['vtOrderID'] in self.vtOrderIDListUpperLowerCum:
+        elif (self.stratTrade['vtOrderID'] in self.vtOrderIDListUpperLowerCum and 
+              tempKey in self.tradingOrdersUpperLowerCum.keys()):
             # ------------------------------------------------------------------
             self.tradingOrdersUpperLowerCum[tempKey]['volume'] -= self.stratTrade['volume']
             # ------------------------------------------------------------------
             if self.tradingOrdersUpperLowerCum[tempKey]['volume'] == 0:
                 self.tradingOrdersUpperLowerCum.pop(tempKey, None)
                 self.tradedOrdersUpperLowerCum[tempKey] = tempKey
+        elif (self.stratTrade['vtOrderID'] in self.vtOrderIDListWinner and 
+              tempKey in self.tradingOrdersWinner.keys()):
+            # ------------------------------------------------------------------
+            self.tradingOrdersWinner[tempKey]['volume'] -= self.stratTrade['volume']
+            # ------------------------------------------------------------------
+            if self.tradingOrdersWinner[tempKey]['volume'] == 0:
+                self.tradingOrdersWinner.pop(tempKey, None)
+                self.tradedOrdersWinner[tempKey] = tempKey
 
         ## =====================================================================
         ## 2. 更新 positionInfo
@@ -418,67 +578,91 @@ class OIStrategy(CtaTemplate):
                 ## 2. 「开空」 --> cover@lower
                 if self.stratTrade['direction'] == 'long':
                     tempDirection = 'sell'
-                    tempPriceType = 'upper'
+                    # tempPriceType = 'upper'
                 elif self.stratTrade['direction'] == 'short':
                     tempDirection = 'cover'
-                    tempPriceType = 'lower'
+                    # tempPriceType = 'lower'
                 ## -------------------------------------------------------------
                 tempKey = self.stratTrade['vtSymbol'] + '-' + tempDirection
                 ## -------------------------------------------------------------
                 
-                if datetime.now().hour in [9,21] and datetime.now().minute < 10:
-                    ## 成交之后先累计，待时间满足之后再一起下涨跌停平仓单
-                    ## ---------------------------------------------------------
-                    if tempKey in self.tradingOrdersUpperLowerCum.keys():
-                        self.tradingOrdersUpperLowerCum[tempKey]['volume'] += self.stratTrade['volume']
-                    else:
-                        ## -----------------------------------------------------
-                        ## 生成 tradingOrdersUpperLowerCum
-                        self.tradingOrdersUpperLowerCum[tempKey] = {
-                                'vtSymbol'      : self.stratTrade['vtSymbol'],
-                                'direction'     : tempDirection,
-                                'volume'        : self.stratTrade['volume'],
-                                'TradingDay'    : self.stratTrade['TradingDay'],
-                                'vtOrderIDList' : []
-                        }
-                        ## -----------------------------------------------------
-                    ## ---------------------------------------------------------
+                # ## =============================================================
+                # ## 涨跌停平仓单
+                # ## 目前暂时不使用这个功能了
+                # ## 不过不要删除，以后有可能会继续使用这个函数
+                # ## -------------------------------------------------------------
+                # if datetime.now().hour in [9,21] and datetime.now().minute < 2:
+                #     ## 成交之后先累计，待时间满足之后再一起下涨跌停平仓单
+                #     ## ---------------------------------------------------------
+                #     if tempKey in self.tradingOrdersUpperLowerCum.keys():
+                #         self.tradingOrdersUpperLowerCum[tempKey]['volume'] += self.stratTrade['volume']
+                #     else:
+                #         ## -----------------------------------------------------
+                #         ## 生成 tradingOrdersUpperLowerCum
+                #         self.tradingOrdersUpperLowerCum[tempKey] = {
+                #                 'vtSymbol'      : self.stratTrade['vtSymbol'],
+                #                 'direction'     : tempDirection,
+                #                 'volume'        : self.stratTrade['volume'],
+                #                 'TradingDay'    : self.stratTrade['TradingDay'],
+                #                 'vtOrderIDList' : []
+                #         }
+                #         ## -----------------------------------------------------
+                #     ## ---------------------------------------------------------
+                # else:
+                #     ## 成交之后立即反手以涨跌停价格下平仓单
+                #     ## ---------------------------------------------------------
+                #     ## 生成 tradingOrdersUpperLower
+                #     self.tradingOrdersUpperLower[tempKey] = {
+                #             'vtSymbol'      : self.stratTrade['vtSymbol'],
+                #             'direction'     : tempDirection,
+                #             'volume'        : self.stratTrade['volume'],
+                #             'TradingDay'    : self.stratTrade['TradingDay'],
+                #             'vtOrderIDList' : []
+                #     }
+                #     ## -------------------------------------------------------------
+
+                #     ## -------------------------------------------------------------
+                #     self.prepareTradingOrder(vtSymbol      = self.stratTrade['vtSymbol'], 
+                #                              tradingOrders = self.tradingOrdersUpperLower, 
+                #                              orderIDList   = self.vtOrderIDListUpperLower,
+                #                              priceType     = tempPriceType,
+                #                              addTick       = 1)
+                #     # --------------------------------------------------------------
+                #     # 获得 vtOrderID
+                #     tempFields = ['TradingDay','vtSymbol','vtOrderIDList','direction','volume']
+                #     self.tradingOrdersUpperLower[tempKey]['vtOrderIDList'] = json.dumps(self.tradingOrdersUpperLower[tempKey]['vtOrderIDList'])
+                #     tempRes = pd.DataFrame([[self.tradingOrdersUpperLower[tempKey][k] for k in tempFields]], 
+                #                             columns = tempFields)
+                #     tempRes.insert(1,'strategyID', self.strategyID)
+                #     tempRes.rename(columns={'vtSymbol':'InstrumentID'}, inplace = True)
+                #     ## -------------------------------------------------------------
+                    
+                #     ## -------------------------------------------------------------
+                #     try:
+                #         self.saveMySQL(df = tempRes, tbl = 'UpperLowerInfo', over = 'append')
+                #     except:
+                #         self.writeCtaLog(u'UpperLower 涨跌停平仓订单 写入 MySQL 数据库出错',
+                #                          logLevel = ERROR)
+                #     ## ---------------------------------------------------------
+                #     ## =============================================================
+
+                ## =============================================================
+                ## 止盈平仓单
+                ## -------------------------------------------------------------
+                if tempKey in self.tradingOrdersWinner.keys():
+                    self.tradingOrdersWinner[tempKey]['volume'] += self.stratTrade['volume']
                 else:
-                    ## 成交之后立即反手以涨跌停价格下平仓单
                     ## ---------------------------------------------------------
-                    ## 生成 tradingOrdersUpperLower
-                    self.tradingOrdersUpperLower[tempKey] = {
+                    ## 生成 tradingOrdersWinner
+                    self.tradingOrdersWinner[tempKey] = {
                             'vtSymbol'      : self.stratTrade['vtSymbol'],
                             'direction'     : tempDirection,
                             'volume'        : self.stratTrade['volume'],
                             'TradingDay'    : self.stratTrade['TradingDay'],
                             'vtOrderIDList' : []
                     }
-                    ## -------------------------------------------------------------
-
-                    ## -------------------------------------------------------------
-                    self.prepareTradingOrder(vtSymbol      = self.stratTrade['vtSymbol'], 
-                                             tradingOrders = self.tradingOrdersUpperLower, 
-                                             orderIDList   = self.vtOrderIDListUpperLower,
-                                             priceType     = tempPriceType,
-                                             addTick       = 1)
-                    # --------------------------------------------------------------
-                    # 获得 vtOrderID
-                    tempFields = ['TradingDay','vtSymbol','vtOrderIDList','direction','volume']
-                    self.tradingOrdersUpperLower[tempKey]['vtOrderIDList'] = json.dumps(self.tradingOrdersUpperLower[tempKey]['vtOrderIDList'])
-                    tempRes = pd.DataFrame([[self.tradingOrdersUpperLower[tempKey][k] for k in tempFields]], 
-                                            columns = tempFields)
-                    tempRes.insert(1,'strategyID', self.strategyID)
-                    tempRes.rename(columns={'vtSymbol':'InstrumentID'}, inplace = True)
-                    ## -------------------------------------------------------------
-                    
-                    ## -------------------------------------------------------------
-                    try:
-                        self.saveMySQL(df = tempRes, tbl = 'UpperLowerInfo', over = 'append')
-                    except:
-                        self.writeCtaLog(u'UpperLower 涨跌停平仓订单 写入 MySQL 数据库出错',
-                                         logLevel = ERROR)
                     ## ---------------------------------------------------------
+                ## =============================================================
             ## =================================================================
 
         elif self.stratTrade['offset'] in [u'平仓', u'平昨', u'平今']:
@@ -487,7 +671,10 @@ class OIStrategy(CtaTemplate):
             ## 因为 failedInfo 已经预先处理过了
             if self.stratTrade['vtOrderID'] in list(set(self.vtOrderIDListClose) |
                                                     set(self.vtOrderIDListUpperLower) |
-                                                    set(self.vtOrderIDListUpperLowerCum)):
+                                                    set(self.vtOrderIDListUpperLowerCum) |
+                                                    set(self.vtOrderIDListUpperLowerTempCum) |
+                                                    set(self.vtOrderIDListWinner) |
+                                                    set(self.vtOrderIDListTempWinner)):
                 self.processOffsetClose(self.stratTrade)
             ## -----------------------------------------------------------------
 
@@ -550,11 +737,14 @@ class OIStrategy(CtaTemplate):
         ## =====================================================================
         if ((m % 5 == 0) and (s == 15)):
             self.updateOrderInfo()
+            self.updateLastTickInfo()
             if self.tradingStart:
                 self.updateWorkingInfo(self.tradingOrdersOpen, 'open')
                 self.updateWorkingInfo(self.tradingOrdersClose, 'close')
                 ## UpperLowerCum
                 self.updateWorkingInfo(self.tradingOrdersUpperLowerCum, 'ul')
+                ## Winner/Loser
+                self.updateWorkingInfo(self.tradingOrdersWinner, 'winner')
             if (h == 15 and self.trading):
                 self.updateFailedInfo(
                     tradingOrders = self.tradingOrdersClose, 
