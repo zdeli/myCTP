@@ -475,14 +475,14 @@ class CtaTemplate(object):
             ## -------------------------------------------------------------
             ## direction
             if failedInfo.loc[i,'direction'] == 'long':
-                if failedInfo.loc[i,'offset'] == u'开仓':
+                if failedInfo.loc[i,'offset'] == u'open':
                     tempDirection = 'buy'
-                elif failedInfo.loc[i,'offset'] == u'平仓':
+                elif failedInfo.loc[i,'offset'] == u'close':
                     tempDirection = 'cover'
             elif failedInfo.loc[i,'direction'] == 'short':
-                if failedInfo.loc[i,'offset'] == u'开仓':
+                if failedInfo.loc[i,'offset'] == u'open':
                     tempDirection = 'short'
-                elif failedInfo.loc[i,'offset'] == u'平仓':
+                elif failedInfo.loc[i,'offset'] == u'close':
                     tempDirection = 'sell'
             ## -------------------------------------------------------------
             ## volume
@@ -1212,18 +1212,18 @@ class CtaTemplate(object):
             ## ---------------------------------------------------------
             if self.failedOrders[k]['direction'] == 'buy':
                 tempDirection = 'long'
-                tempOffset    = u'开仓'
+                tempOffset    = u'open'
             elif self.failedOrders[k]['direction'] == 'sell':
                 tempDirection    = 'short'
                 tempDirectionPos = 'long'
-                tempOffset       = u'平仓'
+                tempOffset       = u'close'
             elif self.failedOrders[k]['direction'] == 'short':
                 tempDirection = 'short'
-                tempOffset    = u'开仓'
+                tempOffset    = u'open'
             elif self.failedOrders[k]['direction'] == 'cover':
                 tempDirection    = 'long'
                 tempDirectionPos = 'short'
-                tempOffset       = u'平仓'
+                tempOffset       = u'close'
             ## ---------------------------------------------------------
             tempRes = [self.strategyID, self.failedOrders[k]['vtSymbol'], 
                        self.failedOrders[k]['TradingDay'], 
@@ -1234,7 +1234,7 @@ class CtaTemplate(object):
             ## -----------------------------------------------------------------------------
             ## 只有需要平仓的，才需要从 positionInfo 数据表剔除
             ## -----------------------------------------------------------------------------
-            if tempOffset == u'平仓':
+            if tempOffset == u'close':
                 try:
                     conn = vtFunction.dbMySQLConnect(self.ctaEngine.mainEngine.dataBase)
                     cursor = conn.cursor()
@@ -1430,7 +1430,7 @@ class CtaTemplate(object):
 
         ## ---------------------------------------------------------------------
         if stratTrade['offset'] in [u'平仓', u'平昨', u'平今']:
-            tempOffset = u'平仓'
+            tempOffset = 'close'
         tempPosInfo = mysqlFailedInfo.loc[mysqlFailedInfo.InstrumentID == stratTrade['InstrumentID']][\
                                           mysqlFailedInfo.direction == stratTrade['direction']][\
                                           mysqlFailedInfo.offset == tempOffset]
