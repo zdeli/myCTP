@@ -614,6 +614,13 @@ class DataEngine(object):
         self.positionInfo = {}
 
         self.tradeInfo = VtTradeData()
+
+        ## 基金份额信息
+        self.fundingInfo = vtFunction.dbMySQLQuery(self.dataBase,
+            """
+            SELECT *
+            FROM funding
+            """)
         ########################################################################
 
 
@@ -924,6 +931,13 @@ class DataEngine(object):
         else:
             tempAccountInfo.marginPct = 0
 
+        ## ------------------------------------------
+        ## 如果有基金份额的信息
+        ## 则重新计算初始资本
+        if len(self.fundingInfo):
+            initialCapital = self.fundingInfo.shares.sum()
+        ## ------------------------------------------
+
         tempAccountInfo.balance = tempAccountInfo.allMoney / initialCapital
         tempAccountInfo.preBalance = (tempAccountInfo.preBalance + flowCapitalPre) / initialCapital
 
@@ -984,12 +998,14 @@ class DataEngine(object):
                 conn.commit()
             except:
                 pass
+            finally:
+                conn.close()
             ## -----------------------------------------------------------------
             self.saveMySQL(df   = self.accountBalance, 
                            tbl  = 'report_account_history', 
                            over = 'append')
         ## ---------------------------------------------------------------------
-        conn.close()
+        
 
 
     def printAllOrders(self):
