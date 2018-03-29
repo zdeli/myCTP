@@ -148,7 +148,7 @@ create table nav(
     Bank            DECIMAL(15,5) ,
     Assets          DECIMAL(15,5) NOT NULL,
     Shares          BIGINT        NOT NULL,
-    NAV             DECIMAL(15,5) NOT NULL,
+    NAV             DECIMAL(15,6) NOT NULL,
     GrowthRate      DECIMAL(10,5) NOT NULL,
     Remarks         text(1000)
 );
@@ -215,5 +215,21 @@ create table lastTickInfo(
     upperLimit      DECIMAL(10,3),
     lowerLimit      DECIMAL(10,3),
     PRIMARY KEY(TradingDay, vtSymbol)
+);
+
+
+################################################################################
+## funding
+## 记录基金申购、赎回记录
+################################################################################
+create table funding(
+    TradingDay      DATE            NOT NULL,
+    ## -------------------------------------------------------------------------
+    capital         DECIMAL(15,2),   ## 购买资金
+    price           DECIMAL(10,6),   ## 购买时的净值，类似成本
+    shares          DECIMAL(15,2),   ## 购买份额   
+    ## ---------------------------
+    investor        VARCHAR(30) NULL     ## 客户
+    ## ---------------------------
 );
 
