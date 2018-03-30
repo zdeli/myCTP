@@ -1037,7 +1037,10 @@ class CtaTemplate(object):
                            """ %(self.strategyID, stage))
             conn.commit()
             conn.close()
-            self.saveMySQL(df = df, tbl = 'workingInfo', over = 'append')
+            self.saveMySQL(df = df, 
+                           tbl = 'workingInfo', 
+                           over = 'append',
+                           sourceID = 'ctaTemplate.updateWorkingInfo()')
         except:
             self.writeCtaLog(u'workingInfo 活跃订单 写入 MySQL 数据库出错',
                                  logLevel = ERROR)
@@ -1184,7 +1187,10 @@ class CtaTemplate(object):
                 ## 写入记录
                 ## 去掉重复的行
                 df = df.drop_duplicates().reset_index(drop = True)
-                self.saveMySQL(df = df, tbl = 'orderInfo', over = 'append')
+                self.saveMySQL(df = df, 
+                               tbl = 'orderInfo', 
+                               over = 'append',
+                               sourceID = 'ctaTemplate.updateOrderInfo()')
             except:
                 self.writeCtaLog(u'orderInfo 委托订单 写入 MySQL 数据库出错',
                                      logLevel = ERROR)
@@ -1262,7 +1268,10 @@ class CtaTemplate(object):
                            """,(self.strategyID, self.ctaEngine.tradingDay))
             conn.commit()
             conn.close()
-            self.saveMySQL(df = df, tbl = 'failedInfo', over = 'append')
+            self.saveMySQL(df = df, 
+                           tbl = 'failedInfo', 
+                           over = 'append',
+                           sourceID = 'ctaTemplate.updateFailedInfo()')
         except:
             self.writeCtaLog(u'failedInfo 失败订单 写入 MySQL 数据库出错',
                                  logLevel = ERROR)
@@ -1272,7 +1281,7 @@ class CtaTemplate(object):
     ## 更新最新价格字典
     ## lastInfo
     ############################################################################
-    def updateLastTickInfo(self,):
+    def updateLastTickInfo(self):
         """处理最新价格的数据表"""
         ## ---------------------------------------------------------------------
         ## 保存 lastTick
@@ -1288,7 +1297,10 @@ class CtaTemplate(object):
             df.rename(columns={'datetime': 'updateTime'}, inplace=True)
             df['TradingDay'] = self.ctaEngine.tradingDay
 
-            self.saveMySQL(df = df, tbl = 'lastTickInfo', over = 'replace')
+            self.saveMySQL(df = df, 
+                           tbl = 'lastTickInfo', 
+                           over = 'replace',
+                           sourceID = 'ctaTemplate.updateLastTickInfo()')
         else:
             try:
                 conn = vtFunction.dbMySQLConnect(self.ctaEngine.mainEngine.dataBase)
@@ -1337,7 +1349,10 @@ class CtaTemplate(object):
             try:
                 tempFields = ['strategyID','InstrumentID','TradingDay','direction','volume']
                 tempRes = pd.DataFrame([[stratTrade[k] for k in tempFields]], columns = tempFields)
-                self.saveMySQL(df = tempRes, tbl = 'positionInfo', over = 'append')
+                self.saveMySQL(df = tempRes, 
+                               tbl = 'positionInfo', 
+                               over = 'append',
+                               sourceID = 'ctaTemplate.processOffsetOpen()')
             except:
                 self.writeCtaLog(u'processOffsetOpen 开仓订单 写入 MySQL 数据库出错',
                                  logLevel = ERROR)
@@ -1353,7 +1368,10 @@ class CtaTemplate(object):
                                """ %(self.strategyID))
                 conn.commit()
                 conn.close()
-                self.saveMySQL(df = mysqlPositionInfo, tbl = 'positionInfo', over = 'append')
+                self.saveMySQL(df = mysqlPositionInfo, 
+                               tbl = 'positionInfo', 
+                               over = 'append',
+                               sourceID = 'ctaTemplate.processOffsetOpen()')
             except:
                 self.writeCtaLog(u'processOffsetOpen 开仓订单 写入 MySQL 数据库出错',
                                  logLevel = ERROR)
@@ -1404,7 +1422,10 @@ class CtaTemplate(object):
                            """ %(self.strategyID))
             conn.commit()
             conn.close()
-            self.saveMySQL(df = mysqlPositionInfo, tbl = 'positionInfo', over = 'append')
+            self.saveMySQL(df = mysqlPositionInfo, 
+                           tbl = 'positionInfo', 
+                           over = 'append',
+                           sourceID = 'ctaTemplate.processOffsetClose()')
         except:
             self.writeCtaLog(u'processOffsetClose 平仓订单 写入 MySQL 数据库出错', 
                                logLevel = ERROR)
@@ -1448,7 +1469,10 @@ class CtaTemplate(object):
                            """ %(self.strategyID))
             conn.commit()
             conn.close()
-            self.saveMySQL(df = mysqlFailedInfo, tbl = 'failedInfo', over = 'append')
+            self.saveMySQL(df = mysqlFailedInfo, 
+                           tbl = 'failedInfo', 
+                           over = 'append',
+                           sourceID = 'ctaTemplate.processTradingOrdersFailedInfo()')
         except:
             self.writeCtaLog(u'processTradingOrdersFailedInfo 昨日未成交订单 写入 MySQL 数据库出错',
                              logLevel = ERROR)
@@ -1465,7 +1489,7 @@ class CtaTemplate(object):
     ############################################################################
     ## 保存数据 DataFrame 格式到 MySQL
     ############################################################################
-    def saveMySQL(self, df, tbl, over):
+    def saveMySQL(self, df, tbl, over, sourceID = ''):
         """
             保存 DataFrame 格式数据到 MySQL,
             @param
@@ -1486,12 +1510,13 @@ class CtaTemplate(object):
                 conn.commit()
                 conn.close()
             except:
-                print 'saveMySQL 写入数据库失败'
+                print 'ctaTemplate.saveMySQL() 写入数据库失败'
         ## -------------------------------------------------------------
         vtFunction.saveMySQL(df   = df, 
                              db   = self.ctaEngine.mainEngine.dataBase, 
                              tbl  = tbl, 
-                             over = over)
+                             over = over,
+                             sourceID = sourceID)
         ## -------------------------------------------------------------
 
 
