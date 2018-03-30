@@ -953,6 +953,7 @@ class DataEngine(object):
         for k in tempFields:
             tempAccountInfo.__dict__[k] = round(tempAccountInfo.__dict__[k],4)
         self.accountBalance = pd.DataFrame([[tempAccountInfo.__dict__[k] for k in tempAccountFields]], columns = tempAccountFields)
+        # print self.accountBalance
 
         ## =====================================================================
         conn = vtFunction.dbMySQLConnect(dbName)
@@ -961,7 +962,8 @@ class DataEngine(object):
         if len(tempPosInfo) != 0:
             self.saveMySQL(df   = self.accountPosition, 
                            tbl  = 'report_position', 
-                           over = 'replace')
+                           over = 'replace',
+                           sourceID = 'vtEngine.getIndicatorInfo().accountPosition')
         else:
             cursor.execute('truncate table report_position')
             conn.commit()
@@ -970,7 +972,8 @@ class DataEngine(object):
         if len(tempAccountInfo.accountID) != 0:
             self.saveMySQL(df   = self.accountBalance, 
                            tbl  = 'report_account', 
-                           over = 'replace')
+                           over = 'replace',
+                           sourceID = 'vtEngine.getIndicatorInfo().accountBalance')
         ## ---------------------------------------------------------------------
         # if (15 <= datetime.now().hour <= 16) and (datetime.now().minute >= 10):
         if (8 <= datetime.now().hour <= 17) and (len(tempAccountInfo.accountID) != 0):
@@ -988,7 +991,8 @@ class DataEngine(object):
                 ## -------------------------------------------------------------
                 self.saveMySQL(df   = self.accountPosition, 
                                tbl  = 'report_position_history', 
-                               over = 'append')
+                               over = 'append',
+                               sourceID = 'vtEngine.getIndicatorInfo().accountPosition')
             # ----------------------------------------------------------------------
             try:
                 cursor.execute("""
@@ -1003,7 +1007,8 @@ class DataEngine(object):
             ## -----------------------------------------------------------------
             self.saveMySQL(df   = self.accountBalance, 
                            tbl  = 'report_account_history', 
-                           over = 'append')
+                           over = 'append',
+                           sourceID = 'vtEngine.getIndicatorInfo().accountBalance')
         ## ---------------------------------------------------------------------
         
 
@@ -1040,11 +1045,12 @@ class DataEngine(object):
     ############################################################################
     ## 保存数据 DataFrame 格式到 MySQL
     ############################################################################
-    def saveMySQL(self, df, tbl, over):
+    def saveMySQL(self, df, tbl, over, sourceID = ''):
         vtFunction.saveMySQL(df   = df, 
                              db   = self.dataBase, 
                              tbl  = tbl, 
-                             over = over)
+                             over = over,
+                             sourceID = sourceID)
 
     ## =========================================================================
     ## william
