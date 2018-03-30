@@ -369,8 +369,7 @@ class CtpMdApi(MdApi):
         """行情推送"""
         ## ---------------------------------------------------------------------
         # 忽略无效的报价单
-        if (data['LastPrice'] > 1.70e+100 or 
-            data['BidPrice1'] > 1.70e+100 or
+        if (data['LastPrice'] > 1.70e+100 or
             data['Volume'] <= 0):
             return
         # 过滤尚未获取合约交易所时的行情推送
@@ -582,6 +581,7 @@ class CtpTdApi(TdApi):
         
         self.gateway     = gateway              # gateway对象
         self.gatewayName = gateway.gatewayName  # gateway对象名称
+        self.dataBase    = globalSetting.accountID
         
         self.reqID = EMPTY_INT              # 操作请求编号
         self.orderRef = EMPTY_INT           # 订单编号
@@ -621,6 +621,17 @@ class CtpTdApi(TdApi):
                 """ % vtFunction.lastTradingDate().strftime('%Y-%m-%d')).totalMoney.iat[0]
         except:
             self.preBalance = 0
+
+        try:
+            self.fundingInfo = vtFunction.dbMySQLQuery(self.dataBase,
+                """
+                SELECT *
+                FROM funding
+                """)
+            self.fundingInfoPre = self.fundingInfo[self.fundingInfo.TradingDay < vtFunction.lastTradingDate()]
+            self.fundingInfoLast = self.fundingInfo[self.fundingInfo.TradingDay == vtFunction.lastTradingDate()]
+        except:
+            self.fundingInfo = pd.DataFrame()
         ## ---------------------------------------------------------------------
 
     #----------------------------------------------------------------------
@@ -906,14 +917,14 @@ class CtpTdApi(TdApi):
         """资金账户查询回报"""
         account = VtAccountData()
         account.gatewayName = self.gatewayName
-    
+
         # 账户代码
         account.accountID   = data['AccountID']
         account.accountName = globalSetting.accountName
         account.vtAccountID = '.'.join([self.gatewayName, account.accountID])
 
         # 数值相关
-        if self.preBalance:
+        if self.preBalance and len(self.fundingInfoLast) == 0:
             account.preBalance = self.preBalance
         else:
             account.preBalance = data['PreBalance']
@@ -923,6 +934,7 @@ class CtpTdApi(TdApi):
                                     )
         if self.gateway.initialCapital:
             account.leverage   = round(account.value / self.gateway.initialCapital,2)  
+
         account.value          = format(account.value, ',')     
         account.commission     = data['Commission']
         account.margin         = data['CurrMargin']
@@ -934,12 +946,22 @@ class CtpTdApi(TdApi):
                            data['Mortgage'] - data['Withdraw'] + data['Deposit'] +
                            data['CloseProfit'] + data['PositionProfit'] + data['CashIn'] -
                            data['Commission'])
+
         ## 基金净值
-        if self.gateway.initialCapital:
+        if len(self.fundingInfo):
+            account.navPre = round((account.preBalance + self.gateway.flowCapitalPre - self.fundingInfoLast.capital.sum()) / self.fundingInfoPre.shares.sum(),4)
+            account.nav = round((account.balance + self.gateway.flowCapitalPre) / self.fundingInfo.shares.sum(),4)
+        elif self.gateway.initialCapital:
+            account.navPre = round((account.preBalance + self.gateway.flowCapitalPre) / self.gateway.initialCapital,4)
             account.nav = round((account.balance + self.gateway.flowCapitalPre) / self.gateway.initialCapital,4)
         ## 收益波动
-        account.volitility = round((account.balance + self.gateway.flowCapitalPre) / 
-                                   (account.preBalance + self.gateway.flowCapitalPre) - 1, 4) * 100
+        # account.volitility = round((account.balance + self.gateway.flowCapitalPre) / 
+        #                            (account.preBalance + self.gateway.flowCapitalPre) - 1, 4) * 100
+        try:
+            account.volitility = round(account.nav / account.navPre - 1, 4) * 100
+        except:
+            account.volitility = 0
+
         account.preBalance = round(account.preBalance, 0)
         account.balance = round(account.balance, 0)
         account.available = round(account.available, 0)
