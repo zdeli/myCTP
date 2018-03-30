@@ -164,8 +164,6 @@ def dbMySQLConnect(dbName):
         return conn
     except (MySQLdb.Error, MySQLdb.Warning, TypeError) as e:
         print e
-    # finally:
-    #     conn.close()
 ## =============================================================================
 
 ## =============================================================================
@@ -211,14 +209,14 @@ def fetchMySQL(db, query):
         return df
     except:
         print u"读取 MySQL 数据库失败"
-        None
+        return None
 
 
 ## =============================================================================
 ## william
 ## 写入 MySQL
 ## -----------------------------------------------------------------------------
-def saveMySQL(df, db, tbl, over):
+def saveMySQL(df, db, tbl, over, sourceID = ''):
     ## 用sqlalchemy构建数据库链接 engine
     ## 记得使用 ?charset=utf8 解决中文乱码的问题
     try:
@@ -234,7 +232,7 @@ def saveMySQL(df, db, tbl, over):
                   if_exists = over, 
                   index     = False)
     except:
-        print u"写入 MySQL 数据库失败"
+        print u"vtFunction.saveMySQL 写入 MySQL 数据库失败 -->" + sourceID
         None
 
 ## =========================================================================
