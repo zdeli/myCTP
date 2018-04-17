@@ -34,20 +34,20 @@ def safeUnicode(value):
     if type(value) is int or type(value) is float:
         if value > MAX_NUMBER:
             value = 0
-    
+
     # 检查防止小数点位过多
     if type(value) is float:
         d = decimal.Decimal(str(value))
         if abs(d.as_tuple().exponent) > MAX_DECIMAL:
             value = round(value, ndigits=MAX_DECIMAL)
-    
+
     return unicode(value)
 
 
 #----------------------------------------------------------------------
 def todayDate():
     """获取当前本机电脑时间的日期"""
-    return datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)    
+    return datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
 
 
 # 图标路径
@@ -61,10 +61,10 @@ for root, subdirs, files in os.walk(path):
 
 #----------------------------------------------------------------------
 def loadIconPath(iconName):
-    """加载程序图标路径"""   
+    """加载程序图标路径"""
     global iconPathDict
-    return iconPathDict.get(iconName, '')    
-    
+    return iconPathDict.get(iconName, '')
+
 
 
 #----------------------------------------------------------------------
@@ -73,7 +73,7 @@ def getTempPath(name):
     tempPath = os.path.join(os.getcwd(), 'temp')
     if not os.path.exists(tempPath):
         os.makedirs(tempPath)
-        
+
     path = os.path.join(tempPath, name)
     return path
 
@@ -83,7 +83,7 @@ def getLogPath(name):
     logPath = os.path.join(os.getcwd(), 'trading/log')
     if not os.path.exists(logPath):
         os.makedirs(logPath)
-        
+
     path = os.path.join(logPath, name)
     return path
 
@@ -102,7 +102,7 @@ def getJsonPath(name, moduleFile):
     if os.path.isfile(currentJsonPath):
         jsonPathDict[name] = currentJsonPath
         return currentJsonPath
-    
+
     moduleFolder = os.path.abspath(os.path.dirname(moduleFile))
     moduleJsonPath = os.path.join(moduleFolder, '.', name)
     jsonPathDict[name] = moduleJsonPath
@@ -118,9 +118,9 @@ fileName = 'ChinaFuturesCalendar.csv'
 ## william
 path     = os.path.abspath(os.path.dirname(__file__))
 ChinaFuturesCalendar = os.path.join(path, fileName)
-############################################################################ 
+############################################################################
 ChinaFuturesCalendar = pd.read_csv(ChinaFuturesCalendar)
-ChinaFuturesCalendar = ChinaFuturesCalendar[ChinaFuturesCalendar['days'].fillna(0) >= 20170101].reset_index(drop = True)    
+ChinaFuturesCalendar = ChinaFuturesCalendar[ChinaFuturesCalendar['days'].fillna(0) >= 20170101].reset_index(drop = True)
 # print ChinaFuturesCalendar.dtypes
 ChinaFuturesCalendar.days = ChinaFuturesCalendar.days.apply(str)
 ChinaFuturesCalendar.nights = ChinaFuturesCalendar.nights.apply(str)
@@ -131,16 +131,16 @@ def tradingDay():
     if 8 <= datetime.now().hour < 17:
         tempRes = datetime.now().strftime("%Y%m%d")
     else:
-        temp = ChinaFuturesCalendar[ChinaFuturesCalendar['nights'] <= 
+        temp = ChinaFuturesCalendar[ChinaFuturesCalendar['nights'] <=
                 datetime.now().strftime("%Y%m%d")]['days']
         tempRes = temp.tail(1).values[0]
-    return tempRes 
+    return tempRes
 ## -----------------------------------------------------------------------------
 def tradingDate():
     return datetime.strptime(tradingDay(),'%Y%m%d').date()
 ## -----------------------------------------------------------------------------
 def lastTradingDay():
-    return ChinaFuturesCalendar.loc[ChinaFuturesCalendar.days < 
+    return ChinaFuturesCalendar.loc[ChinaFuturesCalendar.days <
                                     tradingDay(), 'days'].max()
 ## -----------------------------------------------------------------------------
 def lastTradingDate():
@@ -154,12 +154,12 @@ def lastTradingDate():
 def dbMySQLConnect(dbName):
     """连接 mySQL 数据库"""
     try:
-        conn = MySQLdb.connect(db          = dbName, 
-                               host        = globalSetting().vtSetting["mysqlHost"], 
-                               port        = globalSetting().vtSetting["mysqlPort"], 
-                               user        = globalSetting().vtSetting["mysqlUser"], 
-                               passwd      = globalSetting().vtSetting["mysqlPassword"], 
-                               use_unicode = True, 
+        conn = MySQLdb.connect(db          = dbName,
+                               host        = globalSetting().vtSetting["mysqlHost"],
+                               port        = globalSetting().vtSetting["mysqlPort"],
+                               user        = globalSetting().vtSetting["mysqlUser"],
+                               passwd      = globalSetting().vtSetting["mysqlPassword"],
+                               use_unicode = True,
                                charset     = "utf8")
         return conn
     except (MySQLdb.Error, MySQLdb.Warning, TypeError) as e:
@@ -173,19 +173,18 @@ def dbMySQLConnect(dbName):
 def dbMySQLQuery(dbName, query):
     """ 从 MySQL 中读取数据 """
     try:
-        conn = MySQLdb.connect(db          = dbName, 
-                               host        = globalSetting().vtSetting["mysqlHost"], 
-                               port        = globalSetting().vtSetting["mysqlPort"], 
-                               user        = globalSetting().vtSetting["mysqlUser"], 
-                               passwd      = globalSetting().vtSetting["mysqlPassword"], 
-                               use_unicode = True, 
+        conn = MySQLdb.connect(db          = dbName,
+                               host        = globalSetting().vtSetting["mysqlHost"],
+                               port        = globalSetting().vtSetting["mysqlPort"],
+                               user        = globalSetting().vtSetting["mysqlUser"],
+                               passwd      = globalSetting().vtSetting["mysqlPassword"],
+                               use_unicode = True,
                                charset     = "utf8")
         mysqlData = pd.read_sql(str(query), conn)
         return mysqlData
+        conn.close()
     except (MySQLdb.Error, MySQLdb.Warning, TypeError) as e:
         print e
-    finally:
-        conn.close()
 ## =============================================================================
 
 
@@ -227,9 +226,9 @@ def saveMySQL(df, db, tbl, over, sourceID = ''):
                         globalSetting().vtSetting["mysqlPort"],
                         db)
         engine = create_engine(mysqlInfo)
-        df.to_sql(name      = tbl, 
-                  con       = engine, 
-                  if_exists = over, 
+        df.to_sql(name      = tbl,
+                  con       = engine,
+                  if_exists = over,
                   index     = False)
     except:
         print u"vtFunction.saveMySQL 写入 MySQL 数据库失败 -->" + sourceID
@@ -253,7 +252,7 @@ def saveContractInfo():
                 if dataNew.at[i,'symbol'] not in dataOld.symbol.values:
                     dataOld = dataOld.append(dataNew.loc[i], ignore_index = True)
             dataOld.to_csv(dataFileOld, index = False)
-        else:    
+        else:
             copyfile(dataFileNew,dataFileOld)
     except:
         None
