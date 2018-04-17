@@ -288,6 +288,7 @@ class VtAccountData(VtBaseData):
         
         # 数值相关
         self.preBalance     = EMPTY_FLOAT       # 昨日账户结算净值
+        self.preFlowMoney   = EMPTY_FLOAT       # 昨日流动资产
         self.balance        = EMPTY_FLOAT       # 账户净值
         self.available      = EMPTY_FLOAT       # 可用资金
         self.value          = EMPTY_FLOAT       # 合约价值
