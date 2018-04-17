@@ -770,14 +770,14 @@ class CtaTemplate(object):
                 # ---------------------------------------------------------------------------------
 
             elif (self.tradingBetween and 
-                 # (datetime.now() - tradingOrders[i]['lastTimer']).seconds >= 55):
                  (datetime.now() - tradingOrders[i]['lastTimer']).seconds >= self.randomNo):
                 ## -------------------------------------------------------------
-                remainingMinute = self.tradingCloseMinute2-1 - datetime.now().minute
+                remainingMinute = (self.tradingCloseMinute2-1 - datetime.now().minute) / (self.randomNo / 60.0)
                 if remainingMinute == 0:
                     return
                 remainingVolume = int(math.ceil(
-                    (tradingOrders[i]['volume'] - tempWorkingVolume) / float(remainingMinute)))
+                    (tradingOrders[i]['volume'] - tempWorkingVolume) / float(remainingMinute))
+                                                )
                 if remainingVolume == 0:
                     return
                 ## -------------------------------------------------------------
