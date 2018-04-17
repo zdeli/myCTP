@@ -93,17 +93,13 @@ class OIStrategy(CtaTemplate):
     vtOrderIDListWinner     = []       # 止盈平仓单
     vtOrderIDListTempWinner = []       # 止盈平仓单
     vtOrderIDListAll        = []       # 所有订单集合
-    
-    ## 子订单的拆单比例实现
-    subOrdersLevel = {'level0':{'weight': 0.25, 'deltaTick': 0},
-                      'level1':{'weight': 0.75, 'deltaTick': 1},
-                      'level2':{'weight': 0, 'deltaTick': 2}
-                     }
-    totalOrderLevel = 1 + (len(subOrdersLevel) - 1) * 2
 
     barHeader = ['date','time','symbol','exchange',
                  'open','high','low','close',
                  'volume','turnover']
+
+    ## 是否使用 盈利平仓 的策略
+    WINNER_STRATEGY = ['SimNow_YY']
     ## -------------------------------------------------------------------------
 
     #----------------------------------------------------------------------
@@ -111,6 +107,25 @@ class OIStrategy(CtaTemplate):
         """Constructor"""
         ## 从　ctaEngine 继承所有属性和方法
         super(OIStrategy, self).__init__(ctaEngine, setting)
+
+        ## =====================================================================
+        ## 子订单的拆单比例实现
+        # print 'hello'
+        # print self.ctaEngine.mainEngine.initialCapital 
+        if self.ctaEngine.mainEngine.initialCapital >= 10000000:
+            self.subOrdersLevel = {
+                              'level0':{'weight': 0.20, 'deltaTick': 0},
+                              'level1':{'weight': 0.45, 'deltaTick': 1},
+                              'level2':{'weight': 0.35, 'deltaTick': 2}
+                             }
+        else:
+            self.subOrdersLevel = {
+                              'level0':{'weight': 0.25, 'deltaTick': 0},
+                              'level1':{'weight': 0.75, 'deltaTick': 1},
+                              'level2':{'weight': 0, 'deltaTick': 2}
+                             }
+        self.totalOrderLevel = 1 + (len(self.subOrdersLevel) - 1) * 2
+        ## =====================================================================
 
         ## =====================================================================
         # 创建K线合成器对象
@@ -124,7 +139,10 @@ class OIStrategy(CtaTemplate):
         self.tradingCloseMinute1 = 50
         self.tradingCloseMinute2 = 59
         self.accountID = globalSetting.accountID
-        self.randomNo = 50 + random.randint(-5,5)    ## 随机间隔多少秒再下单
+        if self.ctaEngine.mainEngine.initialCapital >= 10000000:
+            self.randomNo = 30 + random.randint(-5,5)    ## 随机间隔多少秒再下单
+        else:
+            self.randomNo = 50 + random.randint(-5,5)    ## 随机间隔多少秒再下单
         ## =====================================================================
 
         ## ===================================================================== 
@@ -332,7 +350,7 @@ class OIStrategy(CtaTemplate):
         id = tick.vtSymbol
 
         ## =====================================================================
-        if self.accountID in ['TianMi2','TianMi3','SimNow_YY']:
+        if self.accountID in self.WINNER_STRATEGY:
             self.bg.updateTick(tick)
         ## =====================================================================
 
@@ -392,7 +410,7 @@ class OIStrategy(CtaTemplate):
         ## =====================================================================
 
         # =====================================================================
-        if (self.accountID in ['YunYang1','SimNow_LXO'] and 
+        if (self.accountID not in self.WINNER_STRATEGY and 
             (self.tradingStart and not (datetime.now().hour in [9,21] and 
             datetime.now().minute < 2)) and 
             id in [self.tradingOrdersUpperLowerCum[k]['vtSymbol'] 
@@ -579,7 +597,7 @@ class OIStrategy(CtaTemplate):
                 tempKey = self.stratTrade['vtSymbol'] + '-' + tempDirection
                 ## -------------------------------------------------------------
                 
-                if self.accountID in ['YunYang1','SimNow_LXO']:
+                if self.accountID not in self.WINNER_STRATEGY:
                     ## =============================================================
                     ## 涨跌停平仓单
                     ## 目前暂时不使用这个功能了
@@ -640,7 +658,7 @@ class OIStrategy(CtaTemplate):
                         ## ---------------------------------------------------------
                         ## =============================================================
 
-                elif self.accountID in ['TianMi2','TianMi3','SimNow_YY']:
+                elif self.accountID in self.WINNER_STRATEGY:
                     ## =============================================================
                     ## 止盈平仓单
                     ## -------------------------------------------------------------
