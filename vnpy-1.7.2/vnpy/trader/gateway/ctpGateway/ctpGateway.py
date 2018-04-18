@@ -115,7 +115,16 @@ class CtpGateway(VtGateway):
                 os.path.dirname(__file__),
                 '..', '..', '..', '..')
             )
-        self.CTPConnectPath = os.path.join(path, 'trading', 'account', self.CTPConnectFile)       
+        self.CTPConnectPath = os.path.join(path, 'trading', 'account', self.CTPConnectFile)      
+
+        ## -------------------------------
+        ## 发送邮件预警
+        self.sendMailTime = datetime.now()
+        self.sendMailStatus = False
+        self.sendMailContent = u''
+        self.sendMailCounter = 0 
+        ## -------------------------------
+
         
     #----------------------------------------------------------------------
     def connect(self, accountID):
@@ -136,9 +145,41 @@ class CtpGateway(VtGateway):
             userID = str(setting['userID'])
             password = str(setting['password'])
             brokerID = str(setting['brokerID'])
-            tdAddress = str(setting['tdAddress'])
-            mdAddress = str(setting['mdAddress'])
-            
+            ## ------------------------------------
+            # tdAddress = str(setting['tdAddress'])
+            # mdAddress = str(setting['mdAddress'])
+            ## ------------------------------------
+
+            ## -------------------------------------
+            ## -----------
+            tdAddress = ''
+            mdAddress = ''
+            ## -----------
+            for ip in setting['tdIP']:
+                ## ----------------------------------
+                if len(setting['tdIP']) == 1:
+                    result = True
+                else:
+                    result = vtFunction.vetifyIP(ip)
+                ## ----------------------------------
+                if result:
+                    tdAddress = "tcp://" + ip + ":" + setting['tdPort']
+                    tdAddress = str(tdAddress)
+                    break
+
+            for ip in setting['mdIP']:
+                ## ----------------------------------
+                if len(setting['tdIP']) == 1:
+                    result = True
+                else:
+                    result = vtFunction.vetifyIP(ip)
+                ## ----------------------------------
+                if result:
+                    mdAddress = "tcp://" + ip + ":" + setting['mdPort']
+                    mdAddress = str(mdAddress)
+                    break
+            # -------------------------------------
+
             # 如果json文件提供了验证码
             if 'authCode' in setting: 
                 authCode = str(setting['authCode'])
@@ -149,14 +190,12 @@ class CtpGateway(VtGateway):
                 authCode = None
                 # userProductInfo = None
                 userProductInfo = u'CTP'
-
         except KeyError:
             log = VtLogData()
             log.gatewayName = self.gatewayName
             log.logContent = text.CONFIG_KEY_MISSING
             self.onLog(log)
             return            
-        
         ########################################################################
         ## william
         ## 连接到
@@ -165,8 +204,27 @@ class CtpGateway(VtGateway):
         ########################################################################
         # 创建行情和交易接口对象
         # 创建行情和交易接口对象
-        self.mdApi.connect(userID, password, brokerID, mdAddress)
-        self.tdApi.connect(userID, password, brokerID, tdAddress, authCode, userProductInfo)
+        # if (tdAddress and mdAddress):
+        if (tdAddress and mdAddress):
+            self.mdApi.connect(userID, password, brokerID, mdAddress)
+            self.tdApi.connect(userID, password, brokerID, tdAddress, authCode, userProductInfo)
+        # elif (datetime.now().hour in [8,9,20,21]):
+        #     if not self.sendMailStatus:
+        #         self.sendMailStatus = True
+        #         # vtFunction.sendMail(accountName = globalSetting.accountName, 
+        #         #                     content = u'TCP ip 地址登陆错误')
+        #         self.sendMailTime = datetime.now()
+        #     elif ((datetime.now() - self.sendMailTime).seconds > 30 and 
+        #           (self.sendMailCounter < 10)):
+        #         # vtFunction.sendMail(accountName = globalSetting.accountName, 
+        #         #                     content = u'TCP ip 地址登陆错误')
+        #         self.sendMailTime = datetime.now()
+        #         self.sendMailCounter += 1
+
+        ## ---------------------------------------------------------------------
+        # self.mdApi.connect(userID, password, brokerID, mdAddress)
+        # self.tdApi.connect(userID, password, brokerID, tdAddress, authCode, userProductInfo)
+        ## ---------------------------------------------------------------------
         
         # 初始化并启动查询
         self.initQuery()
@@ -244,7 +302,7 @@ class CtpGateway(VtGateway):
     def setQryEnabled(self, qryEnabled):
         """设置是否要启动循环查询"""
         self.qryEnabled = qryEnabled
-    
+
 
 ########################################################################
 class CtpMdApi(MdApi):
@@ -565,9 +623,10 @@ class CtpMdApi(MdApi):
         err.errorMsg    = errorMsg.decode('gbk')
         self.gateway.onError(err) 
         ## ---------------------------------------------------------------------
+        content = u"[错误代码]:%s [提示信息] %s" %(err.errorID, err.errorMsg)
         if globalSetting.LOGIN:
-            self.writeLog(u"[错误代码]:%s [提示信息] %s" %(err.errorID, err.errorMsg),
-                     logLevel = ERROR)
+            self.writeLog(content = content,
+                          logLevel = ERROR)
 
 
 ########################################################################
@@ -619,8 +678,16 @@ class CtpTdApi(TdApi):
                 from report_account_history
                 where TradingDay = '%s'
                 """ % vtFunction.lastTradingDate().strftime('%Y-%m-%d')).totalMoney.iat[0]
+            self.preFlowMoney = vtFunction.dbMySQLQuery(
+                globalSetting.accountID,
+                """
+                select flowMoney
+                from report_account_history
+                where TradingDay = '%s'
+                """ % vtFunction.lastTradingDate().strftime('%Y-%m-%d')).flowMoney.iat[0]
         except:
             self.preBalance = 0
+            self.preFlowMoney = 0
 
         try:
             self.fundingInfo = vtFunction.dbMySQLQuery(self.dataBase,
@@ -632,6 +699,7 @@ class CtpTdApi(TdApi):
             self.fundingInfoLast = self.fundingInfo[self.fundingInfo.TradingDay == vtFunction.lastTradingDate()]
         except:
             self.fundingInfo = pd.DataFrame()
+            self.fundingInfoLast = pd.DataFrame()
         ## ---------------------------------------------------------------------
 
     #----------------------------------------------------------------------
@@ -949,11 +1017,24 @@ class CtpTdApi(TdApi):
 
         ## 基金净值
         if len(self.fundingInfo):
-            account.navPre = round((account.preBalance + self.gateway.flowCapitalPre - self.fundingInfoLast.capital.sum()) / self.fundingInfoPre.shares.sum(),4)
+            # account.navPre = round((account.preBalance + self.gateway.flowCapitalPre - self.fundingInfoLast.capital.sum()) / self.fundingInfoPre.shares.sum(),4)
+            account.navPre = round((account.preBalance + self.preFlowMoney - self.fundingInfoLast.capital.sum()) / self.fundingInfoPre.shares.sum(),4)
             account.nav = round((account.balance + self.gateway.flowCapitalPre) / self.fundingInfo.shares.sum(),4)
         elif self.gateway.initialCapital:
-            account.navPre = round((account.preBalance + self.gateway.flowCapitalPre) / self.gateway.initialCapital,4)
+            # account.navPre = round((account.preBalance + self.gateway.flowCapitalPre + self.preFlowMoney) / self.gateway.initialCapital,4)
+            account.navPre = round((account.preBalance + self.preFlowMoney) / self.gateway.initialCapital,4)
+            # print 'hello'
+            # print 'account.preBalance' 
+            # print account.preBalance
+            # print 'self.gateway.flowCapitalPre' 
+            # print self.gateway.flowCapitalPre
+            # print 'self.preFlowMoney' 
+            # print self.preFlowMoney
+            # print 'hello1'
+            # print account.navPre
             account.nav = round((account.balance + self.gateway.flowCapitalPre) / self.gateway.initialCapital,4)
+            # print 'hello2'
+            # print account.nav
         ## 收益波动
         # account.volitility = round((account.balance + self.gateway.flowCapitalPre) / 
         #                            (account.preBalance + self.gateway.flowCapitalPre) - 1, 4) * 100
@@ -963,6 +1044,7 @@ class CtpTdApi(TdApi):
             account.volitility = 0
 
         account.preBalance = round(account.preBalance, 0)
+        account.preFlowMoney = round(self.preFlowMoney, 0)
         account.balance = round(account.balance, 0)
         account.available = round(account.available, 0)
         # 推送
@@ -1085,7 +1167,6 @@ class CtpTdApi(TdApi):
             ## 交易合约信息获取是否成功
             globalSetting.LOGIN = True
             self.writeLog(u'账户登录成功')
-            
         
     #----------------------------------------------------------------------
     def onRspQryDepthMarketData(self, data, error, n, last):
@@ -1760,6 +1841,6 @@ class CtpTdApi(TdApi):
         err.errorMsg = errorMsg.decode('gbk')
         self.gateway.onError(err) 
         ## ---------------------------------------------------------------------
+        content = u"[错误代码]:%s [提示信息] %s" %(err.errorID, err.errorMsg)
         if globalSetting.LOGIN:
-            self.writeLog(u"[错误代码]:%s [提示信息] %s" %(err.errorID, err.errorMsg),
-                     logLevel = ERROR)
+            self.writeLog(content = content, logLevel = ERROR)
