@@ -119,10 +119,10 @@ class CtpGateway(VtGateway):
 
         ## -------------------------------
         ## 发送邮件预警
-        self.sendMailTime = datetime.now()
-        self.sendMailStatus = False
-        self.sendMailContent = u''
-        self.sendMailCounter = 0 
+        # self.sendMailTime = datetime.now()
+        # self.sendMailStatus = False
+        # self.sendMailContent = u''
+        # self.sendMailCounter = 0 
         ## -------------------------------
 
         
@@ -208,18 +208,6 @@ class CtpGateway(VtGateway):
         if (tdAddress and mdAddress):
             self.mdApi.connect(userID, password, brokerID, mdAddress)
             self.tdApi.connect(userID, password, brokerID, tdAddress, authCode, userProductInfo)
-        # elif (datetime.now().hour in [8,9,20,21]):
-        #     if not self.sendMailStatus:
-        #         self.sendMailStatus = True
-        #         # vtFunction.sendMail(accountName = globalSetting.accountName, 
-        #         #                     content = u'TCP ip 地址登陆错误')
-        #         self.sendMailTime = datetime.now()
-        #     elif ((datetime.now() - self.sendMailTime).seconds > 30 and 
-        #           (self.sendMailCounter < 10)):
-        #         # vtFunction.sendMail(accountName = globalSetting.accountName, 
-        #         #                     content = u'TCP ip 地址登陆错误')
-        #         self.sendMailTime = datetime.now()
-        #         self.sendMailCounter += 1
 
         ## ---------------------------------------------------------------------
         # self.mdApi.connect(userID, password, brokerID, mdAddress)
@@ -1023,18 +1011,7 @@ class CtpTdApi(TdApi):
         elif self.gateway.initialCapital:
             # account.navPre = round((account.preBalance + self.gateway.flowCapitalPre + self.preFlowMoney) / self.gateway.initialCapital,4)
             account.navPre = round((account.preBalance + self.preFlowMoney) / self.gateway.initialCapital,4)
-            # print 'hello'
-            # print 'account.preBalance' 
-            # print account.preBalance
-            # print 'self.gateway.flowCapitalPre' 
-            # print self.gateway.flowCapitalPre
-            # print 'self.preFlowMoney' 
-            # print self.preFlowMoney
-            # print 'hello1'
-            # print account.navPre
             account.nav = round((account.balance + self.gateway.flowCapitalPre) / self.gateway.initialCapital,4)
-            # print 'hello2'
-            # print account.nav
         ## 收益波动
         # account.volitility = round((account.balance + self.gateway.flowCapitalPre) / 
         #                            (account.preBalance + self.gateway.flowCapitalPre) - 1, 4) * 100
