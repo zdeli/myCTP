@@ -4,9 +4,10 @@
 包含一些开发中常用的函数
 """
 
-import os,sys
+import os,sys,subprocess
 import decimal
 import json
+import re
 from datetime import datetime
 from shutil import copyfile
 
@@ -26,6 +27,12 @@ MAX_NUMBER = 10000000000000
 MAX_DECIMAL = 4
 
 from vnpy.trader.vtGlobal import globalSetting
+
+## 发送邮件通知
+import smtplib
+from email.mime.text import MIMEText
+from email.header import Header
+import codecs
 
 #----------------------------------------------------------------------
 def safeUnicode(value):
@@ -257,3 +264,61 @@ def saveContractInfo():
     except:
         None
 ## =========================================================================
+
+############################################################################
+## 验证 IP 有效性
+############################################################################
+def vetifyIP(ip, count = 1, timeout = 1):
+    """验证 Ip 有效性"""
+    cmd = '/bin/ping -c %d -w %d %s' %(count, timeout, ip)
+
+    rsp = subprocess.Popen(cmd, 
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    shell=True
+                    )
+    
+    result = rsp.stdout.read()
+    ## 结果为空
+    if not result:
+        print u"%s :==> 无效" %(ip)
+        return None
+
+    regex = re.findall('100% packet loss', result)
+    if len(regex) != 0:
+        ## 存在丢包
+        print u"%s :==> 无效" %(ip)
+        return None
+    else:
+        ## 没有丢包
+        print u"%s :==> 有效" %(ip)
+        return ip
+
+############################################################################
+## 发送邮件通知
+############################################################################
+def sendMail(accountName, content):
+    """发送邮件通知给：汉云交易员"""
+    receiversMain = ['fl@hicloud-investment.com']
+    receiversOthers = ['lhg@hicloud-investment.com']
+    sender = "trader" + '@hicloud.com'
+
+    message = MIMEText(content.decode('string-escape').decode("utf-8"), 'plain', 'utf-8')
+    ## 显示:发件人
+    message['From'] = Header(sender, 'utf-8')
+    ## 显示:收件人
+    message['To']   =  Header('汉云交易员', 'utf-8')
+    ## 主题
+    subject = tradingDay() + '：' + accountName + u'~~ 启禀大王，你家后院着火了 ~~'
+    message['Subject'] = Header(subject, 'utf-8')
+
+    ## ---------------------------------------------------------------------
+    try:
+        smtpObj = smtplib.SMTP('localhost')
+        # smtpObj.sendmail(sender, receiversMain + receiversOthers, message.as_string())
+        smtpObj.sendmail(sender, receiversMain, message.as_string())
+        print(u'预警邮件发送成功')
+    except smtplib.SMTPException:
+        print(u'预警邮件发送失败')
+    ## ---------------------------------------------------------------------
