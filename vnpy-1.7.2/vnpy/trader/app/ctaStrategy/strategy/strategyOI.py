@@ -205,7 +205,19 @@ class OIStrategy(CtaTemplate):
             """ %(self.strategyID, self.ctaEngine.tradingDate))
         if len(tempCum):
             for i in range(len(tempCum)):
-                self.vtOrderIDListUpperLowerTempCum.extend(ast.literal_eval(tempCum.ix[i,'vtOrderIDList']))
+                ## -------------------------------------------------------------
+                self.vtOrderIDListUpperLowerTempCum.extend(
+                    ast.literal_eval(tempCum.ix[i,'vtOrderIDList']))
+                ## -------------------------------------------------------------
+                tempKey = tempCum.loc[i, 'vtSymbol'] + '-' + tempCum.loc[i, 'orderType']
+
+                self.tradingOrdersUpperLowerCum[tempKey] = {
+                        'vtSymbol'      : tempCum.loc[i, 'vtSymbol'],
+                        'direction'     : tempCum.loc[i, 'orderType'],
+                        'volume'        : tempCum.loc[i, 'volume'],
+                        'TradingDay'    : vtFunction.tradingDay(),
+                        'vtOrderIDList' : ast.literal_eval(tempCum.loc[i, 'vtOrderIDList'])
+                        }
         ## =====================================================================
 
         ## =====================================================================
@@ -275,7 +287,6 @@ class OIStrategy(CtaTemplate):
                 self.winnerParam[k] = dict(tradingSignal.iloc[i])
                 self.winnerParam[k]['param'] = float(self.winnerParam[k]['param'])
                 self.winnerParam[k]['priceTick'] = self.ctaEngine.tickInfo[k]['priceTick']
-        # pprint(stratOI.winnerParam)
         ## =====================================================================
 
         ########################################################################
@@ -617,7 +628,7 @@ class OIStrategy(CtaTemplate):
                                     'volume'        : self.stratTrade['volume'],
                                     'TradingDay'    : self.stratTrade['TradingDay'],
                                     'vtOrderIDList' : []
-                            }
+                                    }
                             ## -----------------------------------------------------
                         ## ---------------------------------------------------------
                     else:
@@ -630,7 +641,7 @@ class OIStrategy(CtaTemplate):
                                 'volume'        : self.stratTrade['volume'],
                                 'TradingDay'    : self.stratTrade['TradingDay'],
                                 'vtOrderIDList' : []
-                        }
+                                }
                         ## -------------------------------------------------------------
 
                         ## -------------------------------------------------------------
