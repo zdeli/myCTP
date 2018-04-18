@@ -79,6 +79,14 @@ class MainEngine(object):
         self.logEngine = None
         self.initLogEngine()
 
+        ## -------------------------------
+        ## 发送邮件预警
+        self.sendMailTime = datetime.now()
+        self.sendMailStatus = False
+        self.sendMailContent = u''
+        self.sendMailCounter = 0 
+        ## -------------------------------
+
     #----------------------------------------------------------------------
     def addGateway(self, gatewayModule):
         """添加底层接口"""
@@ -149,11 +157,24 @@ class MainEngine(object):
                                   logLevel = ERROR,
                                   gatewayName = 'CTP')
                 ## -------------------------------------------------------------
-                if (not self.gatewayDict['CTP'].mdConnected and
+                if (not self.gatewayDict['CTP'].mdConnected or
                     not self.gatewayDict['CTP'].tdConnected):
                     self.writeLog(content = u'账户登录失败',
                                   logLevel = ERROR,
                                   gatewayName = 'CTP')
+                    if datetime.now().hour in [8,9,20,21]:
+                        if not self.sendMailStatus:
+                            self.sendMailStatus = True
+                            vtFunction.sendMail(accountName = globalSetting.accountName, 
+                                                content = u'CTP 账户登录失败')
+                            self.sendMailTime = datetime.now()
+                        elif ((datetime.now() - self.sendMailTime).seconds > 30 and 
+                              (self.sendMailCounter < 10)):
+                            vtFunction.sendMail(accountName = globalSetting.accountName, 
+                                                content = u'CTP 账户登录失败')
+                            self.sendMailTime = datetime.now()
+                            self.sendMailCounter += 1
+                        
             ## -----------------------------------------------------------------
             ## 接口连接后自动执行数据库连接的任务
             ## self.dbMySQLConnect()
