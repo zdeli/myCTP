@@ -99,7 +99,7 @@ class OIStrategy(CtaTemplate):
                  'volume','turnover']
 
     ## 是否使用 盈利平仓 的策略
-    WINNER_STRATEGY = ['SimNow_YY']
+    WINNER_STRATEGY = ['SimNow_YY', 'SimNow_FL']
     ## -------------------------------------------------------------------------
 
     #----------------------------------------------------------------------
@@ -112,7 +112,7 @@ class OIStrategy(CtaTemplate):
         ## 子订单的拆单比例实现
         # print 'hello'
         # print self.ctaEngine.mainEngine.initialCapital 
-        if self.ctaEngine.mainEngine.initialCapital >= 10000000:
+        if self.ctaEngine.mainEngine.initialCapital >= 1e6:
             self.subOrdersLevel = {
                               'level0':{'weight': 0.20, 'deltaTick': 0},
                               'level1':{'weight': 0.45, 'deltaTick': 1},
@@ -135,11 +135,11 @@ class OIStrategy(CtaTemplate):
 
         ## =====================================================================
         ## 交易时点
-        self.tradingCloseHour    = 14
+        self.tradingCloseHour    = 10
         self.tradingCloseMinute1 = 50
         self.tradingCloseMinute2 = 59
         self.accountID = globalSetting.accountID
-        if self.ctaEngine.mainEngine.initialCapital >= 10000000:
+        if self.ctaEngine.mainEngine.initialCapital >= 1e6:
             self.randomNo = 30 + random.randint(-5,5)    ## 随机间隔多少秒再下单
         else:
             self.randomNo = 50 + random.randint(-5,5)    ## 随机间隔多少秒再下单
@@ -215,7 +215,7 @@ class OIStrategy(CtaTemplate):
                         'vtSymbol'      : tempCum.loc[i, 'vtSymbol'],
                         'direction'     : tempCum.loc[i, 'orderType'],
                         'volume'        : tempCum.loc[i, 'volume'],
-                        'TradingDay'    : vtFunction.tradingDay(),
+                        'TradingDay'    : tempCum.loc[i, 'TradingDay'],
                         'vtOrderIDList' : ast.literal_eval(tempCum.loc[i, 'vtOrderIDList'])
                         }
         ## =====================================================================
@@ -333,11 +333,9 @@ class OIStrategy(CtaTemplate):
                 %('-'*80,
                   pprint.pformat(self.tradingOrdersOpen),
                   '-'*80))
-
         ## =====================================================================
 
         ## =====================================================================
-
         ## ---------------------------------------------------------------------
         try:
             self.positionContracts = self.ctaEngine.mainEngine.dataEngine.positionInfo.keys()
@@ -442,7 +440,7 @@ class OIStrategy(CtaTemplate):
                 tradingOrders = self.tradingOrdersUpperLowerCum,
                 orderIDList   = self.vtOrderIDListUpperLowerCum,
                 priceType     = tempPriceType,
-                addTick       = 1)
+                addTick       = 0)
             # -----------------------------------------------------------------
         # =====================================================================
 
@@ -470,13 +468,9 @@ class OIStrategy(CtaTemplate):
 
         h = self.ctaEngine.lastTickDict[id]['lowestPrice'] + self.winnerParam[id]['param'] * self.winnerParam[id]['priceTick']
         l = self.ctaEngine.lastTickDict[id]['highestPrice'] - self.winnerParam[id]['param'] * self.winnerParam[id]['priceTick']
-
-        # h = self.ctaEngine.lastTickDict[id]['lowestPrice'] + 1 * self.winnerParam[id]['priceTick']
-        # l = self.ctaEngine.lastTickDict[id]['highestPrice'] - 1 * self.winnerParam[id]['priceTick']
-
+        
         if ( (self.winnerParam[id]['direction'] == '1' and (bar.high >= h)) or 
              (self.winnerParam[id]['direction'] == '-1' and (bar.low <= l)) ):
-            # print 'sending winner'
             self.writeCtaLog(u'发送 Winner Order: %s' %id)
             tempDirection = [v['direction'] for v in self.tradingOrdersWinner.values() 
                                             if v['vtSymbol'] == id][0]
@@ -649,7 +643,7 @@ class OIStrategy(CtaTemplate):
                                                  tradingOrders = self.tradingOrdersUpperLower, 
                                                  orderIDList   = self.vtOrderIDListUpperLower,
                                                  priceType     = tempPriceType,
-                                                 addTick       = 1)
+                                                 addTick       = 0)
                         # --------------------------------------------------------------
                         # 获得 vtOrderID
                         tempFields = ['TradingDay','vtSymbol','vtOrderIDList','direction','volume']
@@ -761,7 +755,12 @@ class OIStrategy(CtaTemplate):
         ## =====================================================================
         if ((m % 5 == 0) and (s == 15)):
             self.updateOrderInfo()
-            self.updateLastTickInfo()
+            
+            ## ---------------------------------------
+            if self.accountID in self.WINNER_STRATEGY:
+                self.updateLastTickInfo()
+            ## ---------------------------------------
+            
             if self.tradingStart:
                 self.updateWorkingInfo(self.tradingOrdersOpen, 'open')
                 self.updateWorkingInfo(self.tradingOrdersClose, 'close')
