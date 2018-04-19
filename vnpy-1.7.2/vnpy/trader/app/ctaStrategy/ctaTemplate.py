@@ -44,8 +44,8 @@ class CtaTemplate(object):
     author     = EMPTY_UNICODE
     
     # MongoDB数据库的名称，K线数据库默认为1分钟
-    tickDbName = TICK_DB_NAME
-    barDbName = MINUTE_DB_NAME
+    # tickDbName = TICK_DB_NAME
+    # barDbName = MINUTE_DB_NAME
     
     # 策略的基本参数
     vtSymbol = EMPTY_STRING        # 交易的合约vt系统代码    
@@ -59,7 +59,7 @@ class CtaTemplate(object):
     trading        = False                    # 是否启动交易，由引擎管理
     tradingStart   = False                    # 开盘启动交易
     tradingEnd     = False                    # 收盘开启交易
-    pos            = 0                        # 持仓情况
+    # pos            = 0                        # 持仓情况
     sendMailStatus = False                    # 是否已经发送邮件
     tradingClosePositionAll    = False        # 是否强制平仓所有合约
     tradingClosePositionSymbol = False        # 是否强制平仓单个合约
@@ -78,7 +78,7 @@ class CtaTemplate(object):
 
     ## =========================================================================
     # 同步列表，保存了需要保存到数据库的变量名称
-    syncList = ['pos']
+    # syncList = ['pos']
     ## =========================================================================
 
     ## -------------------------------------------------------------------------
@@ -244,7 +244,11 @@ class CtaTemplate(object):
                                      set(self.vtOrderIDListClose) |
                                      set(self.vtOrderIDListFailedInfo) |
                                      set(self.vtOrderIDListClosePositionAll) |
-                                     set(self.vtOrderIDListClosePositionSymbol))
+                                     set(self.vtOrderIDListClosePositionSymbol) |
+                                     set(self.vtOrderIDListUpperLowerCum) |
+                                     set(self.vtOrderIDListUpperLowerTempCum) |
+                                     set(self.vtOrderIDListWinner) |
+                                     set(self.vtOrderIDListTempWinner))
         ## ---------------------------------------------------------------------
         if len(self.vtOrderIDListAll) != 0:
             for vtOrderID in self.vtOrderIDListAll:
@@ -304,11 +308,14 @@ class CtaTemplate(object):
     def sendOrder(self, vtSymbol, orderType, price, volume, stop=False):
         """发送委托"""
         if self.trading:
+            ## -----------------------------------------------------------------
             # 如果stop为True，则意味着发本地停止单
-            if stop:
-                vtOrderIDList = self.ctaEngine.sendStopOrder(vtSymbol, orderType, price, volume, self)
-            else:
-                vtOrderIDList = self.ctaEngine.sendOrder(vtSymbol, orderType, price, volume, self) 
+            # if stop:
+            #     vtOrderIDList = self.ctaEngine.sendStopOrder(vtSymbol, orderType, price, volume, self)
+            # else:
+            #     vtOrderIDList = self.ctaEngine.sendOrder(vtSymbol, orderType, price, volume, self) 
+            ## -----------------------------------------------------------------
+            vtOrderIDList = self.ctaEngine.sendOrder(vtSymbol, orderType, price, volume, self) 
             return vtOrderIDList
         else:
             # 交易停止时发单返回空字符串
@@ -321,11 +328,13 @@ class CtaTemplate(object):
         # 如果发单号为空字符串，则不进行后续操作
         if not vtOrderID:
             return
-        
-        if STOPORDERPREFIX in vtOrderID:
-            self.ctaEngine.cancelStopOrder(vtOrderID)
-        else:
-            self.ctaEngine.cancelOrder(vtOrderID)
+        ## ------------------------------------------
+        # if STOPORDERPREFIX in vtOrderID:
+        #     self.ctaEngine.cancelStopOrder(vtOrderID)
+        # else:
+        #     self.ctaEngine.cancelOrder(vtOrderID)
+        ## ------------------------------------------
+        self.ctaEngine.cancelOrder(vtOrderID)
             
     #----------------------------------------------------------------------
     def cancelAll(self):
@@ -333,14 +342,14 @@ class CtaTemplate(object):
         self.ctaEngine.cancelAll(self.name)
     
     #----------------------------------------------------------------------
-    def insertMongoTick(self, tick):
-        """向数据库中插入tick数据"""
-        self.ctaEngine.insertMongoData(self.tickDbName, self.vtSymbol, tick)
+    # def insertMongoTick(self, tick):
+    #     """向数据库中插入tick数据"""
+    #     self.ctaEngine.insertMongoData(self.tickDbName, self.vtSymbol, tick)
     
     #----------------------------------------------------------------------
-    def insertMongoBar(self, bar):
-        """向数据库中插入bar数据"""
-        self.ctaEngine.insertMongoData(self.barDbName, self.vtSymbol, bar)
+    # def insertMongoBar(self, bar):
+    #     """向数据库中插入bar数据"""
+    #     self.ctaEngine.insertMongoData(self.barDbName, self.vtSymbol, bar)
         
     #----------------------------------------------------------------------
     def loadTick(self, days):
@@ -443,13 +452,11 @@ class CtaTemplate(object):
                                                         'level1':{
                                                                  'volume': int(volume_1),
                                                                  'deltaTick': 1,
-                                                                 # 'status': None,
                                                                  'status_u': None,
                                                                  'status_d': None},
                                                         'level2':{
                                                                  'volume': int(volume_2),
                                                                  'deltaTick': 2,
-                                                                 # 'status': None,
                                                                  'status_u': None,
                                                                  'status_d': None}}
             ## -----------------------------------------------------------------
@@ -566,7 +573,7 @@ class CtaTemplate(object):
         if stage == 'open':
             self.vtOrderIDListOpen = list(set(self.vtOrderIDListOpen) |
                                           set(tempVtOrderIDList))
-        else:
+        elif stage == 'close':
             self.vtOrderIDListClose = list(set(self.vtOrderIDListClose) |
                                           set(tempVtOrderIDList))
 
@@ -575,8 +582,12 @@ class CtaTemplate(object):
     ## 限制价格在 UpperLimit 和 LowerLimit 之间
     ############################################################################
     def priceBetweenUpperLower(self, price, vtSymbol):
-        tempUpperLimit = self.ctaEngine.lastTickDict[vtSymbol]['upperLimit']
-        tempLowerLimit = self.ctaEngine.lastTickDict[vtSymbol]['lowerLimit']
+        """先顶涨跌停价格"""
+        ## -----------------------------------------------------------
+        tempPriceTick = self.ctaEngine.tickInfo[vtSymbol]['priceTick']
+        ## -----------------------------------------------------------
+        tempUpperLimit = self.ctaEngine.lastTickDict[vtSymbol]['upperLimit'] - tempPriceTick
+        tempLowerLimit = self.ctaEngine.lastTickDict[vtSymbol]['lowerLimit'] + tempPriceTick
         return min(max(tempLowerLimit, price), tempUpperLimit)
 
     ############################################################################
@@ -669,10 +680,13 @@ class CtaTemplate(object):
                 ## 保证只有一次下单的在外面
                 ## 如果不想要等待成交之后再下单,
                 ## 可以把这个条件注释掉
-                # if tempWorkingVolume != 0:
-                # if tempWorkingVolume != 0 and self.accountID in ['HanFeng','TianMi1']:    ## 只有在订单比较大的时候才等待
-                if tempWorkingVolume != 0 and self.ctaEngine.mainEngine.initialCapital >= 5000000:     ## 只有在订单比较大的时候才等待
-                    return
+                ## 只有在订单比较大的时候才等待
+                
+                # ----------------------------------------------------------------------------------
+                # if tempWorkingVolume != 0 and self.ctaEngine.mainEngine.initialCapital > 1e7:
+                #     return
+                # ----------------------------------------------------------------------------------
+                
                 ## =============================================================
                 totalVolume = tradingOrders[i]['subOrders']['level0']['volume'] + \
                               sum([tradingOrders[i]['subOrders'][l]['volume'] for l in ['level1','level2']]) * 2
@@ -696,7 +710,28 @@ class CtaTemplate(object):
                 elif tradingOrders[i]['direction'] == u'short':
                     price_0 = self.ctaEngine.lastTickDict[vtSymbol]['openPrice'] * (1 + discount)
                 ## ---------------------------------------------------------------------------------
-                
+
+                # ---------------------------------------------------------------------------------
+                # -------------------------------
+                # level0 是肯定都要发的
+                # level0 优先下单
+                # 如果是最高档次有限下单，
+                # 这把这段代码放在　level2 level1 后面
+                # 其他不用改动
+                # --------------------------------
+                # if ((not tradingOrders[i]['subOrders']['level0']['status']) and 
+                #     tradingOrders[i]['subOrders']['level0']['volume'] == tradingOrders[i]['volume']):
+                if ((not tradingOrders[i]['subOrders']['level0']['status'])):
+                    self.sendTradingOrder(tradingOrders = tradingOrders,
+                                          orderDict     = tradingOrders[i],
+                                          orderIDList   = orderIDList,
+                                          priceType     = 'limit',
+                                          volume        = tradingOrders[i]['subOrders']['level0']['volume'],
+                                          price         = price_0)
+                    tradingOrders[i]['subOrders']['level0']['status'] = 'sended'
+                    return
+                # ---------------------------------------------------------------------------------            
+
                 ## ---------------------------------------------------------------------------------
                 for l in ['level2', 'level1']:
                     ## ---------------------------------------------------------
@@ -724,11 +759,10 @@ class CtaTemplate(object):
                                               price         = price_0,
                                               addTick       = deltaTick_quick)
                         tradingOrders[i]['subOrders'][l][status_quick] = 'sended'
-                        ## -------------------------------------------------
-                        ## 已经触发了一个发送的状态
-                        # tradingOrders[i]['subOrders'][l]['status'] = 'sended'
-                        ## -------------------------------------------------
-                        return
+                        ## ----
+                        ## 要不要继续下单
+                        # return
+                        ## ----
                         ## -----------------------------------------------------
                     else:
                         ## -------------------------------------------------------------------------
@@ -751,23 +785,12 @@ class CtaTemplate(object):
                                                   price         = price_0,
                                                   addTick       = deltaTick_slow)
                             tradingOrders[i]['subOrders'][l][status_slow] = 'sended'
-                            return
+                            ## ----
+                            ## 要不要继续下单
+                            # return
+                            ## ----
                             ## -----------------------------------------------------
                 ## ---------------------------------------------------------------------------------
-
-                # ---------------------------------------------------------------------------------
-                # leve0 是肯定都要发的
-                if ((not tradingOrders[i]['subOrders']['level0']['status']) and 
-                    tradingOrders[i]['subOrders']['level0']['volume'] == tradingOrders[i]['volume']):
-                    self.sendTradingOrder(tradingOrders = tradingOrders,
-                                          orderDict     = tradingOrders[i],
-                                          orderIDList   = orderIDList,
-                                          priceType     = 'limit',
-                                          volume        = tradingOrders[i]['subOrders']['level0']['volume'],
-                                          price         = price_0)
-                    tradingOrders[i]['subOrders']['level0']['status'] = 'sended'
-                    return
-                # ---------------------------------------------------------------------------------
 
             elif (self.tradingBetween and 
                  (datetime.now() - tradingOrders[i]['lastTimer']).seconds >= self.randomNo):
@@ -1037,13 +1060,15 @@ class CtaTemplate(object):
                            """ %(self.strategyID, stage))
             conn.commit()
             conn.close()
-            self.saveMySQL(df = df, 
-                           tbl = 'workingInfo', 
-                           over = 'append',
-                           sourceID = 'ctaTemplate.updateWorkingInfo()')
         except:
             self.writeCtaLog(u'workingInfo 活跃订单 写入 MySQL 数据库出错',
                                  logLevel = ERROR)
+        ## ---------------------------------------------------------------------
+    
+        self.saveMySQL(df = df, 
+                       tbl = 'workingInfo', 
+                       over = 'append',
+                       sourceID = 'ctaTemplate.updateWorkingInfo()')
         ## ---------------------------------------------------------------------
 
 
