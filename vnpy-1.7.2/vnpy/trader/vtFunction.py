@@ -189,12 +189,28 @@ def dbMySQLQuery(dbName, query):
                                charset     = "utf8")
         mysqlData = pd.read_sql(str(query), conn)
         return mysqlData
-        conn.close()
     except (MySQLdb.Error, MySQLdb.Warning, TypeError) as e:
         print e
+    finally:
+        conn.close()
 ## =============================================================================
 
-
+## =============================================================================
+## william
+## 从 MySQL 数据库发送命令
+## -----------------------------------------------------------------------------
+def dbMySQLSend(dbName, query):
+    """ 从 MySQL 中读取数据 """
+    try:
+        conn = dbMySQLConnect(dbName)
+        cursor = conn.cursor()
+        cursor.execute(query)
+        conn.commit()
+    except (MySQLdb.Error, MySQLdb.Warning, TypeError) as e:
+        print e
+    finally:
+        conn.close()
+## =============================================================================
 
 ## =============================================================================
 ## william
