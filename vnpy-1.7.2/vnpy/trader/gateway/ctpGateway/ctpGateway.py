@@ -8,7 +8,7 @@ vtSymbol直接使用symbol
 '''
 
 import os,sys
-import json,shelve
+import json,shelve,math
 import pandas as pd
 from copy import copy
 from datetime import datetime, timedelta
@@ -119,10 +119,10 @@ class CtpGateway(VtGateway):
 
         ## -------------------------------
         ## 发送邮件预警
-        # self.sendMailTime = datetime.now()
-        # self.sendMailStatus = False
-        # self.sendMailContent = u''
-        # self.sendMailCounter = 0 
+        self.sendMailTime = datetime.now()
+        self.sendMailStatus = False
+        self.sendMailContent = u''
+        self.sendMailCounter = 0 
         ## -------------------------------
 
         
@@ -208,6 +208,18 @@ class CtpGateway(VtGateway):
         if (tdAddress and mdAddress):
             self.mdApi.connect(userID, password, brokerID, mdAddress)
             self.tdApi.connect(userID, password, brokerID, tdAddress, authCode, userProductInfo)
+        # elif (datetime.now().hour in [8,9,20,21]):
+        #     if not self.sendMailStatus:
+        #         self.sendMailStatus = True
+        #         # vtFunction.sendMail(accountName = globalSetting.accountName, 
+        #         #                     content = u'TCP ip 地址登陆错误')
+        #         self.sendMailTime = datetime.now()
+        #     elif ((datetime.now() - self.sendMailTime).seconds > 30 and 
+        #           (self.sendMailCounter < 10)):
+        #         # vtFunction.sendMail(accountName = globalSetting.accountName, 
+        #         #                     content = u'TCP ip 地址登陆错误')
+        #         self.sendMailTime = datetime.now()
+        #         self.sendMailCounter += 1
 
         ## ---------------------------------------------------------------------
         # self.mdApi.connect(userID, password, brokerID, mdAddress)
@@ -657,37 +669,45 @@ class CtpTdApi(TdApi):
         self.tradeDict     = {}
         self.posInfoFields = ['vtSymbol', 'PosiDirection', 'position']
         self.dfAll         = pd.DataFrame()
-        ## ---------------------------------------------------------------------
-        try:
-            self.preBalance = vtFunction.dbMySQLQuery(
-                globalSetting.accountID,
-                """
-                select totalMoney
-                from report_account_history
-                where TradingDay = '%s'
-                """ % vtFunction.lastTradingDate().strftime('%Y-%m-%d')).totalMoney.iat[0]
-            self.preFlowMoney = vtFunction.dbMySQLQuery(
-                globalSetting.accountID,
-                """
-                select flowMoney
-                from report_account_history
-                where TradingDay = '%s'
-                """ % vtFunction.lastTradingDate().strftime('%Y-%m-%d')).flowMoney.iat[0]
-        except:
-            self.preBalance = 0
-            self.preFlowMoney = 0
 
-        try:
-            self.fundingInfo = vtFunction.dbMySQLQuery(self.dataBase,
-                """
-                SELECT *
-                FROM funding
-                """)
-            self.fundingInfoPre = self.fundingInfo[self.fundingInfo.TradingDay < vtFunction.lastTradingDate()]
-            self.fundingInfoLast = self.fundingInfo[self.fundingInfo.TradingDay == vtFunction.lastTradingDate()]
-        except:
-            self.fundingInfo = pd.DataFrame()
-            self.fundingInfoLast = pd.DataFrame()
+        ## ---------------------------------------------------------------------
+        # 当前日期 
+        self.tradingDay = vtFunction.tradingDay()
+        self.tradingDate = vtFunction.tradingDate()
+        self.lastTradingDay = vtFunction.lastTradingDay()
+        self.lastTradingDate = vtFunction.lastTradingDate()
+        self.timer = {'account':datetime.now()}
+        ## ---------------------------------------------------------------------
+
+        ## ---------------------------------------------------------------------
+        self.preShares = vtFunction.dbMySQLQuery(
+                        globalSetting.accountID,
+                        """
+                        select *
+                        from funding
+                        where TradingDay < '%s'
+                        """ % self.tradingDay).shares.sum()
+
+        self.navInfo = vtFunction.dbMySQLQuery(
+                        globalSetting.accountID,
+                        """
+                        select *
+                        from nav
+                        where TradingDay = '%s'
+                        """ % self.lastTradingDay)
+        self.feeInfo = vtFunction.dbMySQLQuery(
+                        globalSetting.accountID,
+                        """
+                        select *
+                        from fee
+                        """)
+        if len(self.feeInfo):
+            self.feePre = self.feeInfo.loc[self.feeInfo.TradingDay < self.tradingDate].Amount.sum()
+            self.feeToday = self.feeInfo.loc[self.feeInfo.TradingDay == self.tradingDate].Amount.sum()
+        else:
+            self.feePre = 0
+            self.feeToday = 0
+        self.feeAll = self.feePre + self.feeToday
         ## ---------------------------------------------------------------------
 
     #----------------------------------------------------------------------
@@ -971,61 +991,86 @@ class CtpTdApi(TdApi):
     #----------------------------------------------------------------------
     def onRspQryTradingAccount(self, data, error, n, last):
         """资金账户查询回报"""
+
+        ## ---------------------------------------------------------------------
+        ## 不要那么频繁的更新数据
+        if self.timer['account'] <= (datetime.now() - timedelta(seconds=15)):
+            return
+        self.timer['account'] = datetime.now()
+        ## ---------------------------------------------------------------------
+
+        """
+        onRspQryTradingAccount 获得的　data 可以参考:
+        vnpy/api/ctp/py3/pyscript/ctp_struct.py
+        #资金账户
+        CThostFtdcTradingAccountField = {}
+        """
         account = VtAccountData()
         account.gatewayName = self.gatewayName
 
         # 账户代码
+        
+        # account.TradingDay = self.tradingDay
+        # account.updateTime  = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
         account.accountID   = data['AccountID']
         account.accountName = globalSetting.accountName
-        account.vtAccountID = '.'.join([self.gatewayName, account.accountID])
+        # account.vtAccountID = '.'.join([self.gatewayName, account.accountID])
 
-        # 数值相关
-        if self.preBalance and len(self.fundingInfoLast) == 0:
-            account.preBalance = self.preBalance
-        else:
-            account.preBalance = data['PreBalance']
-        account.available      = data['Available']
-        account.value          = sum(
-                                    [self.gateway.posInfoDict[k]['position'] * self.gateway.posInfoDict[k]['price'] * self.gateway.posInfoDict[k]['size'] for k in self.gateway.posInfoDict.keys()]
-                                    )
-        if self.gateway.initialCapital:
-            account.leverage   = round(account.value / self.gateway.initialCapital,2)  
-
-        account.value          = format(account.value, ',')     
-        account.commission     = data['Commission']
-        account.margin         = data['CurrMargin']
-        account.closeProfit    = data['CloseProfit']
-        account.positionProfit = data['PositionProfit']
-
-        # 这里的balance和快期中的账户不确定是否一样，需要测试
-        account.balance = (data['PreBalance'] - data['PreCredit'] - data['PreMortgage'] +
+        account.preBalance = round(data['PreBalance'],2)
+        account.balance = round(data['PreBalance'] - data['PreCredit'] - data['PreMortgage'] +
                            data['Mortgage'] - data['Withdraw'] + data['Deposit'] +
                            data['CloseProfit'] + data['PositionProfit'] + data['CashIn'] -
-                           data['Commission'])
+                           data['Commission'],2)
+        account.available = round(data['Available'],2)
 
-        ## 基金净值
-        if len(self.fundingInfo):
-            # account.navPre = round((account.preBalance + self.gateway.flowCapitalPre - self.fundingInfoLast.capital.sum()) / self.fundingInfoPre.shares.sum(),4)
-            account.navPre = round((account.preBalance + self.preFlowMoney - self.fundingInfoLast.capital.sum()) / self.fundingInfoPre.shares.sum(),4)
-            account.nav = round((account.balance + self.gateway.flowCapitalPre) / self.fundingInfo.shares.sum(),4)
-        elif self.gateway.initialCapital:
-            # account.navPre = round((account.preBalance + self.gateway.flowCapitalPre + self.preFlowMoney) / self.gateway.initialCapital,4)
-            account.navPre = round((account.preBalance + self.preFlowMoney) / self.gateway.initialCapital,4)
-            account.nav = round((account.balance + self.gateway.flowCapitalPre) / self.gateway.initialCapital,4)
-        ## 收益波动
-        # account.volitility = round((account.balance + self.gateway.flowCapitalPre) / 
-        #                            (account.preBalance + self.gateway.flowCapitalPre) - 1, 4) * 100
-        try:
-            account.volitility = round(account.nav / account.navPre - 1, 4) * 100
-        except:
-            account.volitility = 0
+        account.value = sum(
+                           [self.gateway.posInfoDict[k]['position'] * self.gateway.posInfoDict[k]['price'] * self.gateway.posInfoDict[k]['size'] for k in self.gateway.posInfoDict.keys()]
+                            )
 
-        account.preBalance = round(account.preBalance, 0)
-        account.preFlowMoney = round(self.preFlowMoney, 0)
-        account.balance = round(account.balance, 0)
-        account.available = round(account.available, 0)
+        if self.gateway.initialCapital:
+            account.leverage   = round(account.value / self.gateway.initialCapital,2)
+
+        account.commission     = round(data['Commission'],2)
+        account.margin         = round(data['CurrMargin'],2)
+        account.closeProfit    = round(data['CloseProfit'],2)
+        account.positionProfit = round(data['PositionProfit'],2)
+        account.deposit        = round(data['Deposit'],2)
+        account.withdraw       = round(data['Withdraw'],2)
+
+        if len(self.navInfo):
+            account.preNav = self.navInfo.NAV.values[0]
+            account.flowCapital = self.navInfo.Currency.values[0]
+        else:
+            account.preNav = (account.preBalance + self.gateway.flowCapital) / self.preShares
+            account.flowCapital = self.gateway.flowCapital
+
+        ## 当日出入金换算份额
+        fundingShares = int(math.floor((account.deposit - account.withdraw) / account.preNav))
+
+        ## 当日从期货账户扣费情况
+        ## 需要手动核对
+        account.fee = self.feeToday
+
+        ## 当日总资产
+        account.asset = account.balance + account.flowCapital
+        account.marginPct = round(account.margin / account.asset,4) * 100
+        ##　当日总份额
+        account.shares = self.preShares + fundingShares
+        ## 当日净值
+        account.nav = round((account.asset + self.feeAll) / account.shares,4)
+        ## 当日收益波动
+        account.volitility = round(account.nav / account.preNav - 1, 4) * 100
+        # try:
+        #     account.volitility = round(account.nav / account.preNav - 1, 4) * 100
+        # except:
+        #     account.volitility = 0
+
+        ## 合约价值转化
+        account.value = format(account.value, ',')
         # 推送
         self.gateway.onAccount(account)
+        # print account.__dict__
         
     #----------------------------------------------------------------------
     def onRspQryInvestor(self, data, error, n, last):
