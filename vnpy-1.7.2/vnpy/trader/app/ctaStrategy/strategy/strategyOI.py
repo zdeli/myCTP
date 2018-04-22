@@ -110,14 +110,12 @@ class OIStrategy(CtaTemplate):
 
         ## =====================================================================
         ## 子订单的拆单比例实现
-        # print 'hello'
-        # print self.ctaEngine.mainEngine.initialCapital 
         if self.ctaEngine.mainEngine.initialCapital >= 1e6:
             self.subOrdersLevel = {
                               'level0':{'weight': 0.20, 'deltaTick': 0},
                               'level1':{'weight': 0.45, 'deltaTick': 1},
                               'level2':{'weight': 0.35, 'deltaTick': 2}
-                             }
+                              }
         else:
             self.subOrdersLevel = {
                               'level0':{'weight': 0.25, 'deltaTick': 0},
@@ -128,14 +126,21 @@ class OIStrategy(CtaTemplate):
         ## =====================================================================
 
         ## =====================================================================
+        self.openDiscount  = self.ctaEngine.mainEngine.openDiscountOI
+        self.closeDiscount = self.ctaEngine.mainEngine.closeDiscountOI
+
+        self.openAddTick   = self.ctaEngine.mainEngine.openAddTickOI
+        self.closeAddTick   = self.ctaEngine.mainEngine.closeAddTickOI
+        ## =====================================================================
+
+        ## =====================================================================
         # 创建K线合成器对象
         self.bg = BarGenerator(self.onBar)
-        # self.am = ArrayManager()
         ## =====================================================================
 
         ## =====================================================================
         ## 交易时点
-        self.tradingCloseHour    = 10
+        self.tradingCloseHour    = 14
         self.tradingCloseMinute1 = 50
         self.tradingCloseMinute2 = 59
         self.accountID = globalSetting.accountID
@@ -359,16 +364,18 @@ class OIStrategy(CtaTemplate):
         id = tick.vtSymbol
 
         ## =====================================================================
-        if self.accountID in self.WINNER_STRATEGY:
-            self.bg.updateTick(tick)
+        # if self.accountID in self.WINNER_STRATEGY:
+        #     self.bg.updateTick(tick)
         ## =====================================================================
 
         ## =====================================================================
         if not self.trading:
             return 
-        elif tick.datetime <= (datetime.now() - timedelta(seconds=30)):
+        if tick.datetime <= (datetime.now() - timedelta(seconds=30)):
             return
-        elif ((datetime.now() - self.tickTimer[tick.vtSymbol]).seconds <= 1):
+        elif self.accountID in self.WINNER_STRATEGY:
+            self.bg.updateTick(tick)
+        elif ((datetime.now() - self.tickTimer[tick.vtSymbol]).seconds < 1):
             return
         ## =====================================================================
 
@@ -393,7 +400,7 @@ class OIStrategy(CtaTemplate):
                 tradingOrders = self.tradingOrdersOpen,
                 orderIDList   = self.vtOrderIDListOpen,
                 priceType     = 'limit',
-                discount      = self.ctaEngine.mainEngine.openDiscountOI)
+                discount      = self.openDiscount)
         ## =====================================================================
 
         ## =====================================================================
@@ -401,7 +408,7 @@ class OIStrategy(CtaTemplate):
             id in [self.tradingOrdersClose[k]['vtSymbol'] 
                              for k in self.tradingOrdersClose.keys()]):
             if self.tradingBetween:
-                tempAddTick   = self.ctaEngine.mainEngine.closeAddTickOI
+                tempAddTick   = self.closeAddTick
                 self.prepareTradingOrderSplit(
                     vtSymbol      = id,
                     tradingOrders = self.tradingOrdersClose,
@@ -468,7 +475,7 @@ class OIStrategy(CtaTemplate):
 
         h = self.ctaEngine.lastTickDict[id]['lowestPrice'] + self.winnerParam[id]['param'] * self.winnerParam[id]['priceTick']
         l = self.ctaEngine.lastTickDict[id]['highestPrice'] - self.winnerParam[id]['param'] * self.winnerParam[id]['priceTick']
-        
+
         if ( (self.winnerParam[id]['direction'] == '1' and (bar.high >= h)) or 
              (self.winnerParam[id]['direction'] == '-1' and (bar.low <= l)) ):
             self.writeCtaLog(u'发送 Winner Order: %s' %id)
