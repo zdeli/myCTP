@@ -862,16 +862,16 @@ class CtaTemplate(object):
         ## 更新信息
         ## ---------------------------------------------------------------------
         orderIDList.extend(vtOrderIDList)
+
+        tempKey = id + '-' + tempDirection
+        tradingOrders[tempKey]['vtOrderIDList'].extend(vtOrderIDList)
+
         self.tickTimer[id]= datetime.now()
         ## ---------------------------------------------------------------------
         
         ## ---------------------------------------------------------------------
         ## orderNo: 已经下单的次数计数
         ## 未来可以用于控制订单
-        tempKey = id + '-' + tempDirection
-        tradingOrders[tempKey]['vtOrderIDList'].extend(vtOrderIDList)
-
-        ## ---------------------------------------------------------------------
         # if 'orderNo' not in tradingOrders[tempKey].keys():
         #     tradingOrders[tempKey]['orderNo'] = 1
         # else:
