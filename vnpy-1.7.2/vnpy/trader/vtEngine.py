@@ -9,7 +9,8 @@ from datetime import datetime
 from time import sleep
 from copy import copy
 
-from pymongo import MongoClient, ASCENDING
+# from pymongo import MongoClient, ASCENDING
+## mongo 错误识别，这个不能删除
 from pymongo.errors import ConnectionFailure
 ## -----------------------------------
 import MySQLdb
@@ -58,8 +59,6 @@ class MainEngine(object):
         ## -------------------------------------------
         ## william
         ## 设置数据库连接初始状态
-        # MongoDB数据库相关
-        self.dbMongoClient = None    # MongoDB客户端对象
         ## MySQL 数据库相关
         self.dbMySQLClient = None
         ## ------------------------------------------
@@ -105,7 +104,7 @@ class MainEngine(object):
             'gatewayName': gatewayModule.gatewayName,
             'gatewayDisplayName': gatewayModule.gatewayDisplayName,
             'gatewayType': gatewayModule.gatewayType
-        }
+            }
         self.gatewayDetailList.append(d)
 
     #----------------------------------------------------------------------
@@ -125,7 +124,7 @@ class MainEngine(object):
             'appDisplayName': appModule.appDisplayName,
             'appWidget': appModule.appWidget,
             'appIco': appModule.appIco
-        }
+            }
         self.appDetailList.append(d)
 
     #----------------------------------------------------------------------
@@ -174,12 +173,6 @@ class MainEngine(object):
                                                 content = u'CTP 账户登录失败')
                             self.sendMailTime = datetime.now()
                             self.sendMailCounter += 1
-                        
-            ## -----------------------------------------------------------------
-            ## 接口连接后自动执行数据库连接的任务
-            ## self.dbMySQLConnect()
-            ## -----------------------------------------------------------------
-
 
     #----------------------------------------------------------------------
     def subscribe(self, subscribeReq, gatewayName):
@@ -240,16 +233,10 @@ class MainEngine(object):
         """一键全平"""
         ## -----------------------------------------------------------------
         ## 先撤销所有的订单
-        # try:
-        #     self.CtaStrategy.loadSetting()
-        # except:
-        #     None
         self.cancelAll()
         ## -----------------------------------------------------------------
 
         CTPAccountPosInfo = {k:{u:self.dataEngine.positionInfo[k][u] for u in self.dataEngine.positionInfo[k].keys() if u in ['vtSymbol','position','direction']} for k in self.dataEngine.positionInfo.keys() if int(self.dataEngine.positionInfo[k]['position']) != 0}
-        # if not CTPAccountPosInfo:
-        #     return
 
         ## =====================================================================
         CTAORDER_BUY = u'买开'
@@ -309,9 +296,7 @@ class MainEngine(object):
                         strategy  = tempStrategy)
                 ## -------------------------------------------------------------
             except:
-               # self.writeLog('%s ：平仓失败' %tempInstrumentID, logLevel = ERROR,
-               #               gatewayName = 'CTP')
-               pass
+               None
         ## =====================================================================
 
 
@@ -359,81 +344,7 @@ class MainEngine(object):
         event = Event(type_= EVENT_LOG)
         event.dict_['data'] = log
         self.eventEngine.put(event)
-
-    #----------------------------------------------------------------------
-    def dbMongoConnect(self):
-        """连接MongoDB数据库"""
-        if not self.dbMongoClient:
-            # 读取MongoDB的设置
-            try:
-                # 设置MongoDB操作的超时时间为0.5秒
-                self.dbMongoClient = MongoClient(globalSetting().vtSetting['mongoHost'],
-                                                 globalSetting().vtSetting['mongoPort'],
-                                                 connectTimeoutMS=500)
-
-                # 调用server_info查询服务器状态，防止服务器异常并未连接成功
-                self.dbMongoClient.server_info()
-
-                self.writeLog(text.DATABASE_Mongo_CONNECTING_COMPLETED)
-
-                # 如果启动日志记录，则注册日志事件监听函数
-                if globalSetting().vtSetting['mongoLogging']:
-                    self.eventEngine.register(EVENT_LOG, self.dbMongoLogging)
-
-            except ConnectionFailure:
-                self.writeLog(text.DATABASE_Mongo_CONNECTING_FAILED)
-
-    #----------------------------------------------------------------------
-    def dbMongoInsert(self, dbName, collectionName, d):
-        """向MongoDB中插入数据，d是具体数据"""
-        if self.dbMongoClient:
-            db = self.dbMongoClient[dbName]
-            collection = db[collectionName]
-            collection.insert_one(d)
-        else:
-            self.writeLog(text.DATA_Mongo_INSERT_FAILED)
-
-    #----------------------------------------------------------------------
-    def dbMongoQuery(self, dbName, collectionName, d, sortKey='', sortDirection=ASCENDING):
-        """从MongoDB中读取数据，d是查询要求，返回的是数据库查询的指针"""
-        if self.dbMongoClient:
-            db = self.dbMongoClient[dbName]
-            collection = db[collectionName]
-
-            if sortKey:
-                cursor = collection.find(d).sort(sortKey, sortDirection)    # 对查询出来的数据进行排序
-            else:
-                cursor = collection.find(d)
-
-            if cursor:
-                return list(cursor)
-            else:
-                return []
-        else:
-            self.writeLog(text.DATA_Mongo_QUERY_FAILED)
-            return []
-
-    #----------------------------------------------------------------------
-    def dbMongoUpdate(self, dbName, collectionName, d, flt, upsert=False):
-        """向MongoDB中更新数据，d是具体数据，flt是过滤条件，upsert代表若无是否要插入"""
-        if self.dbMongoClient:
-            db = self.dbCMongolient[dbName]
-            collection = db[collectionName]
-            collection.replace_one(flt, d, upsert)
-        else:
-            self.writeLog(text.DATA_Mongo_UPDATE_FAILED)
-
-    #----------------------------------------------------------------------
-    def dbMongoLogging(self, event):
-        """向MongoDB中插入日志"""
-        log = event.dict_['data']
-        d = {
-            'content': log.logContent,
-            'time': log.logTime,
-            'gateway': log.gatewayName
-        }
-        self.dbMongoInsert(LOG_DB_NAME, self.todayDate, d)
-
+        
 
     ## =========================================================================
     ## william
@@ -636,12 +547,14 @@ class DataEngine(object):
 
         self.tradeInfo = VtTradeData()
 
-        ## 基金份额信息
-        self.fundingInfo = vtFunction.dbMySQLQuery(self.dataBase,
-            """
-            SELECT *
-            FROM funding
-            """)
+        self.positionInfoFields = ['symbol','direction','price','position','positionProfit','size']
+        self.accountInfoFields  = ['accountID','TradingDay','updateTime',
+                                   'preBalance','balance',
+                                   'available','value','margin','marginPct',
+                                   'deposit','withdraw',
+                                   'positionProfit','closeProfit','profit','commission',
+                                   'flowCapital','banking','fee',
+                                   'asset','shares','nav']
         ########################################################################
 
 
@@ -897,19 +810,17 @@ class DataEngine(object):
             return detail.convertOrderReq(req)
 
     ## +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-    def getIndicatorInfo(self, dbName, initialCapital, flowCapitalPre, flowCapitalToday):
+    def getIndicatorInfo(self, dbName, initialCapital, flowCapital):
         """读取指标并写入相应的数据库"""
         ## =====================================================================
         ## 持仓合约信息
         posInfo = copy(self.positionInfo)
         tempPosInfo = {}
-        tempPositionFields = ['symbol','direction','price','position','positionProfit','size']
-        tempAccountFields  = ['vtAccountID','TradingDay','datetime','preBalance','balance','deltaBalancePct','marginPct','positionProfit','closeProfit','availableMoney','totalMoney','flowMoney','allMoney','commission']
         # ----------------------------------------------------------------------
         if len(posInfo) != 0:
             for key in posInfo.keys():
                 if (posInfo[key]['position'] > 0) and (posInfo[key]['price'] != 0):
-                    tempPosInfo[key] = {k:posInfo[key][k] for k in tempPositionFields}
+                    tempPosInfo[key] = {k:posInfo[key][k] for k in self.positionInfoFields}
                     tempPosInfo[key]['size'] = int(tempPosInfo[key]['size'])
                     tempPosInfo[key]['positionProfit'] = round(tempPosInfo[key]['positionProfit'],3)
                     # ------------------------------------------------------------------------------
@@ -932,50 +843,20 @@ class DataEngine(object):
         ## =====================================================================
         ## 账户基金净值
         tempAccountInfo = copy(self.accountInfo)
-        
-        ## -------------------------------------------------------------------------
-        if len(tempAccountInfo.datetime) != 0:
-            try:
-                tempAccountInfo.datetime = datetime.strptime(tempAccountInfo.datetime,
-                                           '%Y-%m-%d %H:%M:%S').strftime('%H:%M:%S')
-            except:
-                pass
-        ## -------------------------------------------------------------------------
-
-        tempAccountInfo.availableMoney = tempAccountInfo.available
-        tempAccountInfo.totalMoney = tempAccountInfo.balance
-        tempAccountInfo.flowMoney = flowCapitalPre + flowCapitalToday
-        tempAccountInfo.allMoney = tempAccountInfo.totalMoney + tempAccountInfo.flowMoney
-
-        if tempAccountInfo.balance != 0:
-            tempAccountInfo.marginPct = tempAccountInfo.margin / tempAccountInfo.balance * 100
-        else:
-            tempAccountInfo.marginPct = 0
-
-        ## ------------------------------------------
-        ## 如果有基金份额的信息
-        ## 则重新计算初始资本
-        if len(self.fundingInfo):
-            initialCapital = self.fundingInfo.shares.sum()
-        ## ------------------------------------------
-
-        tempAccountInfo.balance = tempAccountInfo.allMoney / initialCapital
-        # tempAccountInfo.preBalance = (tempAccountInfo.preBalance + flowCapitalPre) / initialCapital
-        tempAccountInfo.preBalance = (tempAccountInfo.preBalance + tempAccountInfo.preFlowMoney) / initialCapital
-
-        if tempAccountInfo.preBalance != 0:
-            tempAccountInfo.deltaBalancePct = (tempAccountInfo.balance -
-                                               tempAccountInfo.preBalance) / tempAccountInfo.preBalance * 100
-        else:
-            tempAccountInfo.deltaBalancePct = 0
-
         tempAccountInfo.TradingDay = self.tradingDate.strftime('%Y-%m-%d')
-
-        tempFields = ['balance','preBalance','deltaBalancePct','marginPct', 'positionProfit','closeProfit','commission']
-        for k in tempFields:
-            tempAccountInfo.__dict__[k] = round(tempAccountInfo.__dict__[k],4)
-        self.accountBalance = pd.DataFrame([[tempAccountInfo.__dict__[k] for k in tempAccountFields]], columns = tempAccountFields)
-        # print self.accountBalance
+        tempAccountInfo.updateTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        tempAccountInfo.value = float(tempAccountInfo.value.replace(',',''))
+        
+        self.accountBalance = pd.DataFrame([[tempAccountInfo.__dict__[k] for k in self.accountInfoFields]], 
+                                           columns = self.accountInfoFields)
+        vtFunction.dbMySQLSend(dbName = dbName, 
+                               query = """DELETE FROM accountInfo
+                                          WHERE TradingDay = '%s'""" %self.tradingDay)
+        self.saveMySQL(df   = self.accountBalance,
+                       tbl  = 'accountInfo',
+                       over = 'append',
+                       sourceID = 'vtEngine.getIndicatorInfo().accountBalance')
+        ## =====================================================================
 
         ## =====================================================================
         conn = vtFunction.dbMySQLConnect(dbName)
@@ -990,12 +871,7 @@ class DataEngine(object):
             cursor.execute('truncate table report_position')
             conn.commit()
         ## ---------------------------------------------------------------------
-        ## 保证能够连 CTP 成功
-        if len(tempAccountInfo.accountID) != 0:
-            self.saveMySQL(df   = self.accountBalance,
-                           tbl  = 'report_account',
-                           over = 'replace',
-                           sourceID = 'vtEngine.getIndicatorInfo().accountBalance')
+
         ## ---------------------------------------------------------------------
         # if (15 <= datetime.now().hour <= 16) and (datetime.now().minute >= 10):
         if (8 <= datetime.now().hour <= 17) and (len(tempAccountInfo.accountID) != 0):
@@ -1015,22 +891,6 @@ class DataEngine(object):
                                tbl  = 'report_position_history',
                                over = 'append',
                                sourceID = 'vtEngine.getIndicatorInfo().accountPosition')
-            # ----------------------------------------------------------------------
-            try:
-                cursor.execute("""
-                                DELETE FROM report_account_history
-                                WHERE TradingDay = %s
-                               """,[self.tradingDate.strftime('%Y-%m-%d')])
-                conn.commit()
-            except:
-                pass
-            finally:
-                conn.close()
-            ## -----------------------------------------------------------------
-            self.saveMySQL(df   = self.accountBalance,
-                           tbl  = 'report_account_history',
-                           over = 'append',
-                           sourceID = 'vtEngine.getIndicatorInfo().accountBalance')
         ## ---------------------------------------------------------------------
 
 
