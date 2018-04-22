@@ -94,7 +94,6 @@ class CtpGateway(VtGateway):
     ## 仓位信息
     posInfoDict  = {}
     initialCapital = 0
-    flowCapitalPre = 0
 
     #----------------------------------------------------------------------
     def __init__(self, eventEngine, gatewayName='CTP'):
@@ -115,15 +114,7 @@ class CtpGateway(VtGateway):
                 os.path.dirname(__file__),
                 '..', '..', '..', '..')
             )
-        self.CTPConnectPath = os.path.join(path, 'trading', 'account', self.CTPConnectFile)      
-
-        ## -------------------------------
-        ## 发送邮件预警
-        self.sendMailTime = datetime.now()
-        self.sendMailStatus = False
-        self.sendMailContent = u''
-        self.sendMailCounter = 0 
-        ## -------------------------------
+        self.CTPConnectPath = os.path.join(path, 'trading', 'account', self.CTPConnectFile)
 
         
     #----------------------------------------------------------------------
@@ -204,22 +195,9 @@ class CtpGateway(VtGateway):
         ########################################################################
         # 创建行情和交易接口对象
         # 创建行情和交易接口对象
-        # if (tdAddress and mdAddress):
         if (tdAddress and mdAddress):
             self.mdApi.connect(userID, password, brokerID, mdAddress)
             self.tdApi.connect(userID, password, brokerID, tdAddress, authCode, userProductInfo)
-        # elif (datetime.now().hour in [8,9,20,21]):
-        #     if not self.sendMailStatus:
-        #         self.sendMailStatus = True
-        #         # vtFunction.sendMail(accountName = globalSetting.accountName, 
-        #         #                     content = u'TCP ip 地址登陆错误')
-        #         self.sendMailTime = datetime.now()
-        #     elif ((datetime.now() - self.sendMailTime).seconds > 30 and 
-        #           (self.sendMailCounter < 10)):
-        #         # vtFunction.sendMail(accountName = globalSetting.accountName, 
-        #         #                     content = u'TCP ip 地址登陆错误')
-        #         self.sendMailTime = datetime.now()
-        #         self.sendMailCounter += 1
 
         ## ---------------------------------------------------------------------
         # self.mdApi.connect(userID, password, brokerID, mdAddress)
@@ -676,7 +654,8 @@ class CtpTdApi(TdApi):
         self.tradingDate = vtFunction.tradingDate()
         self.lastTradingDay = vtFunction.lastTradingDay()
         self.lastTradingDate = vtFunction.lastTradingDate()
-        self.timer = {'account':datetime.now()}
+        self.timer = {'account' : datetime.now(),
+                      'position': datetime.now()}
         ## ---------------------------------------------------------------------
 
         ## ---------------------------------------------------------------------
@@ -701,12 +680,14 @@ class CtpTdApi(TdApi):
                         select *
                         from fee
                         """)
+
         if len(self.feeInfo):
             self.feePre = self.feeInfo.loc[self.feeInfo.TradingDay < self.tradingDate].Amount.sum()
             self.feeToday = self.feeInfo.loc[self.feeInfo.TradingDay == self.tradingDate].Amount.sum()
         else:
             self.feePre = 0
             self.feeToday = 0
+
         self.feeAll = self.feePre + self.feeToday
         ## ---------------------------------------------------------------------
 
@@ -923,6 +904,11 @@ class CtpTdApi(TdApi):
     #----------------------------------------------------------------------
     def onRspQryInvestorPosition(self, data, error, n, last):
         """持仓查询回报"""
+        
+        # if (datetime.now() - self.timer['position']).seconds <= 15:
+        #     return
+        # self.timer['position'] = datetime.now()
+
         if not data['InstrumentID']:
             return
         
@@ -994,7 +980,7 @@ class CtpTdApi(TdApi):
 
         ## ---------------------------------------------------------------------
         ## 不要那么频繁的更新数据
-        if self.timer['account'] <= (datetime.now() - timedelta(seconds=15)):
+        if (datetime.now() - self.timer['account']).seconds <= 15:
             return
         self.timer['account'] = datetime.now()
         ## ---------------------------------------------------------------------
@@ -1013,7 +999,8 @@ class CtpTdApi(TdApi):
         # account.TradingDay = self.tradingDay
         # account.updateTime  = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         
-        account.accountID   = data['AccountID']
+        # account.accountID   = data['AccountID']
+        account.accountID = '.'.join([self.gatewayName, data['AccountID']])
         account.accountName = globalSetting.accountName
         # account.vtAccountID = '.'.join([self.gatewayName, account.accountID])
 
@@ -1035,6 +1022,7 @@ class CtpTdApi(TdApi):
         account.margin         = round(data['CurrMargin'],2)
         account.closeProfit    = round(data['CloseProfit'],2)
         account.positionProfit = round(data['PositionProfit'],2)
+        account.profit         = account.closeProfit + account.positionProfit
         account.deposit        = round(data['Deposit'],2)
         account.withdraw       = round(data['Withdraw'],2)
 
@@ -1061,10 +1049,6 @@ class CtpTdApi(TdApi):
         account.nav = round((account.asset + self.feeAll) / account.shares,4)
         ## 当日收益波动
         account.volitility = round(account.nav / account.preNav - 1, 4) * 100
-        # try:
-        #     account.volitility = round(account.nav / account.preNav - 1, 4) * 100
-        # except:
-        #     account.volitility = 0
 
         ## 合约价值转化
         account.value = format(account.value, ',')
@@ -1733,7 +1717,7 @@ class CtpTdApi(TdApi):
             req['BrokerID'] = self.brokerID
             req['AuthCode'] = self.authCode
             req['UserProductInfo'] = self.userProductInfo
-            self.reqID +=1
+            self.reqID += 1
             self.reqAuthenticate(req, self.reqID)
 
     #----------------------------------------------------------------------
@@ -1781,6 +1765,7 @@ class CtpTdApi(TdApi):
         req['VolumeCondition'] = defineDict['THOST_FTDC_VC_AV']              # 任意成交量
         req['MinVolume'] = 1                                                 # 最小成交量为1
         
+        ## ---------------------------------------------------------------------
         # 判断FAK和FOK
         if orderReq.priceType == PRICETYPE_FAK:
             req['OrderPriceType'] = defineDict["THOST_FTDC_OPT_LimitPrice"]
@@ -1789,16 +1774,21 @@ class CtpTdApi(TdApi):
         if orderReq.priceType == PRICETYPE_FOK:
             req['OrderPriceType'] = defineDict["THOST_FTDC_OPT_LimitPrice"]
             req['TimeCondition'] = defineDict['THOST_FTDC_TC_IOC']
-            req['VolumeCondition'] = defineDict['THOST_FTDC_VC_CV']             
+            req['VolumeCondition'] = defineDict['THOST_FTDC_VC_CV']   
+        ## ---------------------------------------------------------------------
 
-        ########################################################################
+        ## ---------------------------------------------------------------------
+        self.reqOrderInsert(req, self.reqID)
+        ## ---------------------------------------------------------------------
+
+        ## =====================================================================
         ## william
         ## orderReq
         orderReq.orderTime   = datetime.now().strftime('%H:%M:%S')
         orderReq.orderID     = self.orderRef
         orderReq.vtOrderID   = self.gatewayName + '.' + str(self.orderRef)
-        orderReq.tradeStatus = u'未成交'   
-
+        orderReq.tradeStatus = u'未成交'      
+        ## ---------------------------------------------------------------------
         tempFields = ['vtOrderID','vtSymbol','price','direction','offset',
                       'volume','orderTime','tradeStatus']
         ## ---------------------------------------------------------------------
@@ -1806,13 +1796,12 @@ class CtpTdApi(TdApi):
             pd.DataFrame([orderReq.__dict__.values()], columns = orderReq.__dict__.keys())[tempFields].to_string(index=False),
             '-'*80)
         self.writeLog(content)
-        ########################################################################
-
-        self.reqOrderInsert(req, self.reqID)
-        
+        ## --------------------------------------------------------------------- 
         # 返回订单号（字符串），便于某些算法进行动态管理
         vtOrderID = '.'.join([self.gatewayName, str(self.orderRef)])
         return vtOrderID
+        ## =====================================================================
+
     
     #----------------------------------------------------------------------
     def cancelOrder(self, cancelOrderReq):
@@ -1829,6 +1818,8 @@ class CtpTdApi(TdApi):
         req['ActionFlag']   = defineDict['THOST_FTDC_AF_Delete']
         req['BrokerID']     = self.brokerID
         req['InvestorID']   = self.userID
+
+        self.reqOrderAction(req, self.reqID)
         # ## ---------------------------------------------------------------------
         # ## william
         # ## 打印撤单的详细信息
@@ -1838,7 +1829,7 @@ class CtpTdApi(TdApi):
             '-'*80)
         self.writeLog(content)
         ## ---------------------------------------------------------------------       
-        self.reqOrderAction(req, self.reqID)
+
         
     #----------------------------------------------------------------------
     def close(self):
