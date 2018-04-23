@@ -30,19 +30,19 @@ class DrEngine(object):
         """Constructor"""
         self.mainEngine = mainEngine
         self.eventEngine = eventEngine
-        
+
         # 当前日期
         self.tradingDay = vtFunction.tradingDay()
         self.tradingDate = vtFunction.tradingDate()
 
         ## 目录
         self.PATH = os.path.abspath(os.path.dirname(__file__))
-        
+
         ## ------------------
         # 载入设置，订阅行情
         self.loadSetting()
         ## ------------------
-        
+
         self.tickHeader   = ['timeStamp','date','time','symbol','exchange',
                           'lastPrice','preSettlementPrice','preClosePrice',
                           'openPrice','highestPrice','lowestPrice','closePrice',
@@ -60,7 +60,7 @@ class DrEngine(object):
                           'settlementPrice','averagePrice']
         ########################################################################
         self.DATA_PATH    = os.path.normpath(os.path.join(
-                            globalSetting().vtSetting['DATA_PATH'], 
+                            globalSetting().vtSetting['DATA_PATH'],
                             globalSetting.accountID, 'TickData'))
         self.dataFile     = os.path.join(self.DATA_PATH,(str(self.tradingDay) + '.csv'))
         if not os.path.exists(self.dataFile):
@@ -73,18 +73,18 @@ class DrEngine(object):
         ## =====================================================================
         self.DAY_START   = time(8, 00)       # 日盘启动和停止时间
         self.DAY_END     = time(15, 30)
-        
+
         self.NIGHT_START = time(20, 00)      # 夜盘启动和停止时间
-        self.NIGHT_END   = time(2, 35)
+        self.NIGHT_END   = time(2, 30)
         self.exitCounter = 0
         ## =====================================================================
 
         # 注册事件监听
-        self.registerEvent()  
-    
+        self.registerEvent()
+
     #----------------------------------------------------------------------
     def loadSetting(self):
-        """加载配置"""     
+        """加载配置"""
         ## =====================================================================
         if self.mainEngine.subscribeAll:
             try:
@@ -116,22 +116,22 @@ class DrEngine(object):
         tick = event.dict_['data']
 
         ## ---------------------------------------------------------------------
-        ## william     
-        data = [tick.__dict__[k] for k in self.tickHeader]  
+        ## william
+        data = [tick.__dict__[k] for k in self.tickHeader]
         ## ---------------------------------------------------------------------
-        
+
         ## =====================================================================
         # if self.mainEngine.printData:
         #     print '\n' + tick.vtSymbol
         #     print data
         ## =====================================================================
- 
+
         ## =====================================================================
         # if self.mainEngine.subscribeAll:
         #     with open(self.dataFile, 'a') as f:
         #         wr = csv.writer(f)
         #         wr.writerow(data)
-        
+
         with open(self.dataFile, 'a') as f:
             wr = csv.writer(f)
             wr.writerow(data)
@@ -145,15 +145,15 @@ class DrEngine(object):
         """控制交易开始与停止状态"""
         if (datetime.now().minute % 2 != 0 or
             datetime.now().second % 20 != 0):
-            return 
+            return
         ## ------------------------
         h = datetime.now().hour
         m = datetime.now().minute
         ## ------------------------
 
         ## ---------------------------------------------------------------------
-        if ((h == self.NIGHT_END.hour and m >= self.NIGHT_END.minute) or 
-            (h == self.DAY_END.hour and m >= self.DAY_END.minute) or 
+        if ((h == self.NIGHT_END.hour and m >= self.NIGHT_END.minute) or
+            (h == self.DAY_END.hour and m >= self.DAY_END.minute) or
             (h in [self.NIGHT_START.hour, self.DAY_START.hour] and 50 <= m < 55)):
             self.exitCounter += 1
             self.mainEngine.writeLog(u'即将退出系统，计数器：%s' %self.exitCounter,
