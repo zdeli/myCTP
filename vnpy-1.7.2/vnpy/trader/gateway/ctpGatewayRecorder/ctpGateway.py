@@ -22,20 +22,20 @@ from .language import text
 from vnpy.trader.vtGlobal import globalSetting
 
 
-# 以下为一些VT类型和CTP类型的映射字典
-# 价格类型映射
+# # 以下为一些VT类型和CTP类型的映射字典
+# # 价格类型映射
 # priceTypeMap = {}
 # priceTypeMap[PRICETYPE_LIMITPRICE] = defineDict["THOST_FTDC_OPT_LimitPrice"]
 # priceTypeMap[PRICETYPE_MARKETPRICE] = defineDict["THOST_FTDC_OPT_AnyPrice"]
 # priceTypeMapReverse = {v: k for k, v in priceTypeMap.items()} 
 
-# 方向类型映射
+# # 方向类型映射
 # directionMap = {}
 # directionMap[DIRECTION_LONG] = defineDict['THOST_FTDC_D_Buy']
 # directionMap[DIRECTION_SHORT] = defineDict['THOST_FTDC_D_Sell']
 # directionMapReverse = {v: k for k, v in directionMap.items()}
 
-# 开平类型映射
+# # 开平类型映射
 # offsetMap = {}
 # offsetMap[OFFSET_OPEN] = defineDict['THOST_FTDC_OF_Open']
 # offsetMap[OFFSET_CLOSE] = defineDict['THOST_FTDC_OF_Close']
@@ -89,13 +89,6 @@ NIGHT_TRADING = datetime(1900, 1, 1, 20).time()
 class CtpGateway(VtGateway):
     """CTP接口"""
 
-    ## 最后一个数据
-    # lastTickDict = {}
-    ## 仓位信息
-    # posInfoDict  = {}
-    # initialCapital = 0
-    # flowCapitalPre = 0
-
     #----------------------------------------------------------------------
     def __init__(self, eventEngine, gatewayName='CTP'):
         """Constructor"""
@@ -115,7 +108,7 @@ class CtpGateway(VtGateway):
                 os.path.dirname(__file__),
                 '..', '..', '..', '..')
             )
-        self.CTPConnectPath = os.path.join(path, 'trading', 'account', self.CTPConnectFile)       
+        self.CTPConnectPath = os.path.join(path, 'trading', 'account', self.CTPConnectFile)      
         
     #----------------------------------------------------------------------
     def connect(self, accountID):
@@ -136,25 +129,53 @@ class CtpGateway(VtGateway):
             userID = str(setting['userID'])
             password = str(setting['password'])
             brokerID = str(setting['brokerID'])
-            tdAddress = str(setting['tdAddress'])
-            mdAddress = str(setting['mdAddress'])
-            
+
+            ## -------------------------------------
+            ## -----------
+            tdAddress = ''
+            mdAddress = ''
+            ## -----------
+            for ip in setting['tdIP']:
+                ## ----------------------------------
+                if len(setting['tdIP']) == 1:
+                    result = True
+                else:
+                    result = vtFunction.vetifyIP(ip)
+                ## ----------------------------------
+                if result:
+                    tdAddress = "tcp://" + ip + ":" + setting['tdPort']
+                    tdAddress = str(tdAddress)
+                    break
+
+            for ip in setting['mdIP']:
+                ## ----------------------------------
+                if len(setting['tdIP']) == 1:
+                    result = True
+                else:
+                    result = vtFunction.vetifyIP(ip)
+                ## ----------------------------------
+                if result:
+                    mdAddress = "tcp://" + ip + ":" + setting['mdPort']
+                    mdAddress = str(mdAddress)
+                    break
+            # -------------------------------------
+
             # 如果json文件提供了验证码
             if 'authCode' in setting: 
                 authCode = str(setting['authCode'])
-                userProductInfo = str(setting['userProductInfo'])
+                # userProductInfo = str(setting['userProductInfo'])
+                userProductInfo = u'CTP'
                 self.tdApi.requireAuthentication = True
             else:
                 authCode = None
-                userProductInfo = None
-
+                # userProductInfo = None
+                userProductInfo = u'CTP'
         except KeyError:
             log = VtLogData()
             log.gatewayName = self.gatewayName
             log.logContent = text.CONFIG_KEY_MISSING
             self.onLog(log)
             return            
-        
         ########################################################################
         ## william
         ## 连接到
@@ -163,8 +184,15 @@ class CtpGateway(VtGateway):
         ########################################################################
         # 创建行情和交易接口对象
         # 创建行情和交易接口对象
-        self.mdApi.connect(userID, password, brokerID, mdAddress)
-        self.tdApi.connect(userID, password, brokerID, tdAddress, authCode, userProductInfo)
+        # if (tdAddress and mdAddress):
+        if (tdAddress and mdAddress):
+            self.mdApi.connect(userID, password, brokerID, mdAddress)
+            self.tdApi.connect(userID, password, brokerID, tdAddress, authCode, userProductInfo)
+
+        ## ---------------------------------------------------------------------
+        # self.mdApi.connect(userID, password, brokerID, mdAddress)
+        # self.tdApi.connect(userID, password, brokerID, tdAddress, authCode, userProductInfo)
+        ## ---------------------------------------------------------------------
         
         # 初始化并启动查询
         self.initQuery()
@@ -242,7 +270,7 @@ class CtpGateway(VtGateway):
     def setQryEnabled(self, qryEnabled):
         """设置是否要启动循环查询"""
         self.qryEnabled = qryEnabled
-    
+
 
 ########################################################################
 class CtpMdApi(MdApi):
@@ -367,9 +395,9 @@ class CtpMdApi(MdApi):
         """行情推送"""
         ## ---------------------------------------------------------------------
         # 忽略无效的报价单
-        # if data['LastPrice'] > 1.70e+100:
+        # if (data['LastPrice'] > 1.70e+100 or
+        #     data['Volume'] <= 0):
         #     return
-        # ------------------------------------
         # 过滤尚未获取合约交易所时的行情推送
         symbol = data['InstrumentID']
         if symbol not in symbolExchangeDict:
@@ -408,7 +436,7 @@ class CtpMdApi(MdApi):
         tick.turnover = round(data['Turnover'],5)
 
         ## 持仓数据
-        tick.preOpenInterest    = data['PreOpenInterest']
+        # tick.preOpenInterest    = data['PreOpenInterest']
         tick.openInterest       = data['OpenInterest']
 
         # ## 期权数据
@@ -563,9 +591,10 @@ class CtpMdApi(MdApi):
         err.errorMsg    = errorMsg.decode('gbk')
         self.gateway.onError(err) 
         ## ---------------------------------------------------------------------
+        content = u"[错误代码]:%s [提示信息] %s" %(err.errorID, err.errorMsg)
         if globalSetting.LOGIN:
-            self.writeLog(u"[错误代码]:%s [提示信息] %s" %(err.errorID, err.errorMsg),
-                     logLevel = ERROR)
+            self.writeLog(content = content,
+                          logLevel = ERROR)
 
 
 ########################################################################
@@ -579,6 +608,7 @@ class CtpTdApi(TdApi):
         
         self.gateway     = gateway              # gateway对象
         self.gatewayName = gateway.gatewayName  # gateway对象名称
+        self.dataBase    = globalSetting.accountID
         
         self.reqID = EMPTY_INT              # 操作请求编号
         self.orderRef = EMPTY_INT           # 订单编号
@@ -596,7 +626,7 @@ class CtpTdApi(TdApi):
         self.frontID = EMPTY_INT            # 前置机编号
         self.sessionID = EMPTY_INT          # 会话编号
         
-        # self.posDict = {}
+        self.posDict = {}
         self.symbolExchangeDict = {}        # 保存合约代码和交易所的印射关系
         self.symbolSizeDict = {}            # 保存合约代码和合约大小的印射关系
 
@@ -616,9 +646,29 @@ class CtpTdApi(TdApi):
         #         from report_account_history
         #         where TradingDay = '%s'
         #         """ % vtFunction.lastTradingDate().strftime('%Y-%m-%d')).totalMoney.iat[0]
+        #     self.preFlowMoney = vtFunction.dbMySQLQuery(
+        #         globalSetting.accountID,
+        #         """
+        #         select flowMoney
+        #         from report_account_history
+        #         where TradingDay = '%s'
+        #         """ % vtFunction.lastTradingDate().strftime('%Y-%m-%d')).flowMoney.iat[0]
         # except:
         #     self.preBalance = 0
-        ## ---------------------------------------------------------------------
+        #     self.preFlowMoney = 0
+
+        # try:
+        #     self.fundingInfo = vtFunction.dbMySQLQuery(self.dataBase,
+        #         """
+        #         SELECT *
+        #         FROM funding
+        #         """)
+        #     self.fundingInfoPre = self.fundingInfo[self.fundingInfo.TradingDay < vtFunction.lastTradingDate()]
+        #     self.fundingInfoLast = self.fundingInfo[self.fundingInfo.TradingDay == vtFunction.lastTradingDate()]
+        # except:
+        #     self.fundingInfo = pd.DataFrame()
+        #     self.fundingInfoLast = pd.DataFrame()
+        # ## ---------------------------------------------------------------------
 
     #----------------------------------------------------------------------
     def onFrontConnected(self):
@@ -834,6 +884,7 @@ class CtpTdApi(TdApi):
     def onRspQryInvestorPosition(self, data, error, n, last):
         """持仓查询回报"""
         pass
+
         # if not data['InstrumentID']:
         #     return
         
@@ -903,16 +954,17 @@ class CtpTdApi(TdApi):
     def onRspQryTradingAccount(self, data, error, n, last):
         """资金账户查询回报"""
         pass
+
         # account = VtAccountData()
         # account.gatewayName = self.gatewayName
-    
+
         # # 账户代码
         # account.accountID   = data['AccountID']
         # account.accountName = globalSetting.accountName
         # account.vtAccountID = '.'.join([self.gatewayName, account.accountID])
 
         # # 数值相关
-        # if self.preBalance:
+        # if self.preBalance and len(self.fundingInfoLast) == 0:
         #     account.preBalance = self.preBalance
         # else:
         #     account.preBalance = data['PreBalance']
@@ -922,6 +974,7 @@ class CtpTdApi(TdApi):
         #                             )
         # if self.gateway.initialCapital:
         #     account.leverage   = round(account.value / self.gateway.initialCapital,2)  
+
         # account.value          = format(account.value, ',')     
         # account.commission     = data['Commission']
         # account.margin         = data['CurrMargin']
@@ -933,13 +986,37 @@ class CtpTdApi(TdApi):
         #                    data['Mortgage'] - data['Withdraw'] + data['Deposit'] +
         #                    data['CloseProfit'] + data['PositionProfit'] + data['CashIn'] -
         #                    data['Commission'])
+
         # ## 基金净值
-        # if self.gateway.initialCapital:
+        # if len(self.fundingInfo):
+        #     # account.navPre = round((account.preBalance + self.gateway.flowCapitalPre - self.fundingInfoLast.capital.sum()) / self.fundingInfoPre.shares.sum(),4)
+        #     account.navPre = round((account.preBalance + self.preFlowMoney - self.fundingInfoLast.capital.sum()) / self.fundingInfoPre.shares.sum(),4)
+        #     account.nav = round((account.balance + self.gateway.flowCapitalPre) / self.fundingInfo.shares.sum(),4)
+        # elif self.gateway.initialCapital:
+        #     # account.navPre = round((account.preBalance + self.gateway.flowCapitalPre + self.preFlowMoney) / self.gateway.initialCapital,4)
+        #     account.navPre = round((account.preBalance + self.preFlowMoney) / self.gateway.initialCapital,4)
+        #     # print 'hello'
+        #     # print 'account.preBalance' 
+        #     # print account.preBalance
+        #     # print 'self.gateway.flowCapitalPre' 
+        #     # print self.gateway.flowCapitalPre
+        #     # print 'self.preFlowMoney' 
+        #     # print self.preFlowMoney
+        #     # print 'hello1'
+        #     # print account.navPre
         #     account.nav = round((account.balance + self.gateway.flowCapitalPre) / self.gateway.initialCapital,4)
+        #     # print 'hello2'
+        #     # print account.nav
         # ## 收益波动
-        # account.volitility = round((account.balance + self.gateway.flowCapitalPre) / 
-        #                            (account.preBalance + self.gateway.flowCapitalPre) - 1, 4) * 100
+        # # account.volitility = round((account.balance + self.gateway.flowCapitalPre) / 
+        # #                            (account.preBalance + self.gateway.flowCapitalPre) - 1, 4) * 100
+        # try:
+        #     account.volitility = round(account.nav / account.navPre - 1, 4) * 100
+        # except:
+        #     account.volitility = 0
+
         # account.preBalance = round(account.preBalance, 0)
+        # account.preFlowMoney = round(self.preFlowMoney, 0)
         # account.balance = round(account.balance, 0)
         # account.available = round(account.available, 0)
         # # 推送
@@ -1062,7 +1139,6 @@ class CtpTdApi(TdApi):
             ## 交易合约信息获取是否成功
             globalSetting.LOGIN = True
             self.writeLog(u'账户登录成功')
-            
         
     #----------------------------------------------------------------------
     def onRspQryDepthMarketData(self, data, error, n, last):
@@ -1218,6 +1294,7 @@ class CtpTdApi(TdApi):
     def onRtnOrder(self, data):
         """报单回报"""
         pass
+
         # # 更新最大报单编号
         # newref = data['OrderRef']
         # self.orderRef = max(self.orderRef, int(newref))
@@ -1258,6 +1335,7 @@ class CtpTdApi(TdApi):
     def onRtnTrade(self, data):
         """成交回报"""
         pass
+
         # # 创建报单数据对象
         # trade = VtTradeData()
         # trade.gatewayName = self.gatewayName
@@ -1291,6 +1369,7 @@ class CtpTdApi(TdApi):
     def onErrRtnOrderInsert(self, data, error):
         """发单错误回报（交易所）"""
         pass
+
         # ## =====================================================================
         # ## william
         # ## 拒单的返回信息
@@ -1317,8 +1396,8 @@ class CtpTdApi(TdApi):
         # ## 打印拒单的信息信息
         # tempFields = ['orderID','vtSymbol','price','direction','offset',
         #               'tradedVolume','orderTime','status']
-        # content = u"拒单的信息信息\n%s\n%s\n%s" %('-'*80,
-        #     pd.DataFrame([[order.__dict__[k] for k in tempFields]], columns = tempFields),
+        # content = u"拒单的详细信息\n%s\n%s\n%s" %('-'*80,
+        #     pd.DataFrame([[order.__dict__[k] for k in tempFields]], columns = tempFields).to_string(index=False),
         #     '-'*80)
         # self.writeLog(content, logLevel = ERROR)
         # self.writeError(error['ErrorID'], error['ErrorMsg'])
@@ -1632,6 +1711,7 @@ class CtpTdApi(TdApi):
     def sendOrder(self, orderReq):
         """发单"""
         pass
+
         # self.reqID += 1
         # self.orderRef += 1
         
@@ -1681,7 +1761,7 @@ class CtpTdApi(TdApi):
         #               'volume','orderTime','tradeStatus']
         # ## ---------------------------------------------------------------------
         # content = u'下单的详细信息\n%s\n%s\n%s' %('-'*80,
-        #     pd.DataFrame([orderReq.__dict__.values()], columns = orderReq.__dict__.keys())[tempFields],
+        #     pd.DataFrame([orderReq.__dict__.values()], columns = orderReq.__dict__.keys())[tempFields].to_string(index=False),
         #     '-'*80)
         # self.writeLog(content)
         # ########################################################################
@@ -1696,6 +1776,7 @@ class CtpTdApi(TdApi):
     def cancelOrder(self, cancelOrderReq):
         """撤单"""
         pass
+        
         # self.reqID += 1
 
         # req = {}
@@ -1713,7 +1794,7 @@ class CtpTdApi(TdApi):
         # # ## 打印撤单的详细信息
         # ## ---------------------------------------------------------------------
         # content = u'撤单的详细信息\n%s%s\n%s' %('-'*80+'\n',
-        #     pd.DataFrame([req.values()], columns = req.keys()),
+        #     pd.DataFrame([req.values()], columns = req.keys()).to_string(index=False),
         #     '-'*80)
         # self.writeLog(content)
         # ## ---------------------------------------------------------------------       
@@ -1742,6 +1823,6 @@ class CtpTdApi(TdApi):
         err.errorMsg = errorMsg.decode('gbk')
         self.gateway.onError(err) 
         ## ---------------------------------------------------------------------
+        content = u"[错误代码]:%s [提示信息] %s" %(err.errorID, err.errorMsg)
         if globalSetting.LOGIN:
-            self.writeLog(u"[错误代码]:%s [提示信息] %s" %(err.errorID, err.errorMsg),
-                     logLevel = ERROR)
+            self.writeLog(content = content, logLevel = ERROR)
