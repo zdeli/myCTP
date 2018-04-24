@@ -110,7 +110,7 @@ class OIStrategy(CtaTemplate):
 
         ## =====================================================================
         ## 子订单的拆单比例实现
-        if self.ctaEngine.mainEngine.initialCapital >= 1e6:
+        if self.ctaEngine.mainEngine.initialCapital >= 1e7:
             self.subOrdersLevel = {
                               'level0':{'weight': 0.20, 'deltaTick': 0},
                               'level1':{'weight': 0.45, 'deltaTick': 1},
@@ -118,8 +118,8 @@ class OIStrategy(CtaTemplate):
                               }
         else:
             self.subOrdersLevel = {
-                              'level0':{'weight': 0.25, 'deltaTick': 0},
-                              'level1':{'weight': 0.75, 'deltaTick': 1},
+                              'level0':{'weight': 0.30, 'deltaTick': 0},
+                              'level1':{'weight': 0.70, 'deltaTick': 1},
                               'level2':{'weight': 0, 'deltaTick': 2}
                              }
         self.totalOrderLevel = 1 + (len(self.subOrdersLevel) - 1) * 2
@@ -144,7 +144,7 @@ class OIStrategy(CtaTemplate):
         self.tradingCloseMinute1 = 50
         self.tradingCloseMinute2 = 59
         self.accountID = globalSetting.accountID
-        if self.ctaEngine.mainEngine.initialCapital >= 1e6:
+        if self.ctaEngine.mainEngine.initialCapital >= 1e7:
             self.randomNo = 30 + random.randint(-5,5)    ## 随机间隔多少秒再下单
         else:
             self.randomNo = 50 + random.randint(-5,5)    ## 随机间隔多少秒再下单
@@ -285,7 +285,11 @@ class OIStrategy(CtaTemplate):
         ## =====================================================================
         ## 止盈平仓参数
         self.winnerParam = {}
-        tradingSignal = self.fetchMySQL(query = "select InstrumentID as vtSymbol,direction,volume,param from tradingSignal where TradingDay = %s and strategyID = '%s'" %(self.ctaEngine.lastTradingDay, self.strategyID))
+        tradingSignal = self.fetchMySQL(
+            query = """select InstrumentID as vtSymbol,direction,volume,param 
+                       from tradingSignal 
+                       where TradingDay = %s and strategyID = '%s'""" 
+                       %(self.ctaEngine.lastTradingDay, self.strategyID))
         if len(tradingSignal):
             for i in range(len(tradingSignal)):
                 k = tradingSignal.at[i, 'vtSymbol']
