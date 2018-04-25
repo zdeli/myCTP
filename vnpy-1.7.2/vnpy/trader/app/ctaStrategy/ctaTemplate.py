@@ -155,6 +155,19 @@ class CtaTemplate(object):
         self.ctaEngine = ctaEngine
 
         ## =====================================================================
+        ## 配置文件
+        ## -------
+        self.CTPConnectFile = 'CTP_connect.json'
+        path = os.path.normpath(
+            os.path.join(
+                os.path.dirname(__file__),
+                '..', '..', '..', '..')
+            )
+        self.CTPConnectPath = os.path.join(path, 'trading', 'account', self.CTPConnectFile)
+        self.CTPConnect = json.load(file(self.CTPConnectPath))[globalSetting.accountID]
+        ## =====================================================================
+
+        ## =====================================================================
         ## 交易时点
         self.tradingDay          = self.ctaEngine.tradingDay
         self.lastTradingDay      = self.ctaEngine.lastTradingDay
@@ -643,7 +656,8 @@ class CtaTemplate(object):
                 # --------------------------------------------------------------
                 
                 ## =============================================================
-                totalVolume = tradingOrders[i]['volume']
+                totalVolume = tradingOrders[i]['subOrders']['level0']['volume'] + \
+                              sum([tradingOrders[i]['subOrders'][l]['volume'] for l in ['level1','level2']]) * 2
                 ## ---------------------------------------------------------------------------------
                 if len(allOrders):
                     tempCanceledOrder  = allOrders.loc[allOrders.status.isin([u'已撤销'])][\
@@ -886,6 +900,7 @@ class CtaTemplate(object):
     ## self.tradingBetween
     ############################################################################
     def updateTradingStatus(self):
+        """调整交易状态"""
         h = datetime.now().hour
         m = datetime.now().minute
         s = datetime.now().second
