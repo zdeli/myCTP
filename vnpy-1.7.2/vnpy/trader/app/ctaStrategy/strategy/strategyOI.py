@@ -368,11 +368,6 @@ class OIStrategy(CtaTemplate):
         id = tick.vtSymbol
 
         ## =====================================================================
-        # if self.accountID in self.WINNER_STRATEGY:
-        #     self.bg.updateTick(tick)
-        ## =====================================================================
-
-        ## =====================================================================
         if not self.trading:
             return 
         if tick.datetime <= (datetime.now() - timedelta(seconds=30)):
@@ -461,6 +456,11 @@ class OIStrategy(CtaTemplate):
     ## -------------------------------------------------------------------------
     def onBar(self, bar):
         """Bar 数据进来后触发事件"""
+        ## --------------------------
+        ## 从 ctaTemplate 获取 Bar 数据
+        ## 然后触发条件
+        ## --------------------------
+        
         # data = [bar.__dict__[k] for k in self.barHeader]  
         # print data
         # ## ---------------------------------
@@ -737,14 +737,31 @@ class OIStrategy(CtaTemplate):
     def processTradingStatus(self, event):
         """处理交易状态变更"""
         ## -----------------------
-        self.updateTradingStatus()
+        if not self.trading:
+            return
         ## -----------------------
 
         ## -----------------------
         h = datetime.now().hour
         m = datetime.now().minute
         s = datetime.now().second
+        if (s % 5 != 0):
+            return
         ## -----------------------
+
+        ## =====================================================================
+        self.CTPConnect = json.load(file(self.CTPConnectPath))[globalSetting.accountID]
+        if not self.CTPConnect['status'][self.className]:
+            self.ctaEngine.stopStrategy(self.name)
+            self.writeCtaLog(u'%s策略已停止' %self.name)
+            return
+        ## =====================================================================
+
+
+        ## -----------------------
+        self.updateTradingStatus()
+        ## -----------------------
+
 
         if (h == self.tradingCloseHour and 
             m in [self.tradingCloseMinute1, (self.tradingCloseMinute2-1)] and 
@@ -764,9 +781,10 @@ class OIStrategy(CtaTemplate):
         ## =====================================================================
         ## 更新 workingInfo
         ## =====================================================================
-        if ((m % 5 == 0) and (s == 15)):
+        if ((m % 5 == 0) and 
+            (10 <= s <= 30) and 
+            (s % 10 == 0)):
             self.updateOrderInfo()
-            
             ## ---------------------------------------
             if self.accountID in self.WINNER_STRATEGY:
                 self.updateLastTickInfo()
