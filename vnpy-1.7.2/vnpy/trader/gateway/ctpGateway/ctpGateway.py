@@ -8,6 +8,7 @@ vtSymbol直接使用symbol
 '''
 
 import os,sys
+import io
 import json,shelve,math
 import pandas as pd
 from copy import copy
@@ -94,6 +95,7 @@ class CtpGateway(VtGateway):
     ## 仓位信息
     posInfoDict  = {}
     initialCapital = 0
+    flowCapital = 0
 
     #----------------------------------------------------------------------
     def __init__(self, eventEngine, gatewayName='CTP'):
@@ -132,7 +134,25 @@ class CtpGateway(VtGateway):
         # 解析json文件
         info = json.load(f)
         setting = info[accountID]
+
         try:
+            ## ------------------------------------
+            for k in setting['status']:
+                setting['status'][k] = True
+            try:
+                to_unicode = unicode
+            except NameError:
+                to_unicode = str
+            # Write JSON file
+            with io.open(self.CTPConnectPath, 'w', encoding='utf8') as outfile:
+                info_json = json.dumps(info,
+                                       indent       = 4, 
+                                       sort_keys    = True,
+                                       separators   = (',', ': '),
+                                       ensure_ascii = False)
+                outfile.write(to_unicode(info_json))
+            ## ------------------------------------
+
             userID = str(setting['userID'])
             password = str(setting['password'])
             brokerID = str(setting['brokerID'])
