@@ -9,8 +9,8 @@ from vnpy.trader.vtFunction import loadIconPath
 
 BASIC_FONT = None
 try:
-    family = globalSetting['fontFamily']
-    size = globalSetting['fontSize']
+    family = globalSetting().vtSetting['fontFamily']
+    size = globalSetting().vtSetting['fontSize']
     BASIC_FONT = QtGui.QFont(family, size)
 except:
     BASIC_FONT = QtGui.QFont(u'微软雅黑', 12)
@@ -22,17 +22,17 @@ def createQApp():
     qApp = QtWidgets.QApplication([])
     
     # 设置Qt的皮肤
-    if globalSetting['darkStyle']:
+    if globalSetting().vtSetting['darkStyle']:
         try:
             import qdarkstyle
             qApp.setStyleSheet(qdarkstyle.load_stylesheet(pyside=False))
         except ImportError:
             pass
         
-    # 设置Windows底部任务栏图标
-    if 'Windows' in platform.uname():
-        import ctypes
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('vn.trader')  
+    # # 设置Windows底部任务栏图标
+    # if 'Windows' in platform.uname():
+    #     import ctypes
+    #     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('vn.trader')  
     
     # 设置Qt字体
     qApp.setFont(BASIC_FONT)
