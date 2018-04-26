@@ -1,6 +1,6 @@
 # encoding: UTF-8
 
-import platform
+# import platform
 
 from qtpy import QtWidgets, QtGui, QtCore
 
