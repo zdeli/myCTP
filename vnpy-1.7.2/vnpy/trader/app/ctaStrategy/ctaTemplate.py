@@ -702,7 +702,7 @@ class CtaTemplate(object):
                     tradingOrders[i]['subOrders']['level0']['status'] = 'sended'
                     return
                 elif (any(x in tradingOrders[i]['vtOrderIDList'] for 
-                        x in tempCanceledOrder.vtOrderID.values)):
+                          x in tempCanceledOrder.vtOrderID.values)):
                     self.sendTradingOrder(tradingOrders = tradingOrders,
                                           orderDict     = tradingOrders[i],
                                           orderIDList   = orderIDList,
@@ -739,37 +739,54 @@ class CtaTemplate(object):
                                               price         = price_0,
                                               addTick       = deltaTick_quick)
                         tradingOrders[i]['subOrders'][l][status_quick] = 'sended'
+                        ## 如果真是的分档超过了 3 个层次
+                        ## 则需要优先下快速成交的订单
+                        if self.realOrderLevel >= 3:
+                            continue
                         ## ----
                         ## 要不要继续下单
                         # return
                         ## ----
                         ## -----------------------------------------------------
-                    else:
-                        ## -------------------------------------------------------------------------
-                        if not tradingOrders[i]['subOrders']['level0']['status']:
-                            self.sendTradingOrder(tradingOrders = tradingOrders,
-                                                  orderDict     = tradingOrders[i],
-                                                  orderIDList   = orderIDList,
-                                                  priceType     = 'limit',
-                                                  volume        = tradingOrders[i]['subOrders']['level0']['volume'],
-                                                  price         = price_0)
-                            tradingOrders[i]['subOrders']['level0']['status'] = 'sended'
-                            return
-                        ## -------------------------------------------------------------------------
-                        elif not tradingOrders[i]['subOrders'][l][status_slow]:
-                            self.sendTradingOrder(tradingOrders = tradingOrders,
-                                                  orderDict     = tradingOrders[i],
-                                                  orderIDList   = orderIDList,
-                                                  priceType     = 'limit',
-                                                  volume        = tradingOrders[i]['subOrders'][l]['volume'],
-                                                  price         = price_0,
-                                                  addTick       = deltaTick_slow)
-                            tradingOrders[i]['subOrders'][l][status_slow] = 'sended'
-                            ## ----
-                            ## 要不要继续下单
-                            # return
-                            ## ----
-                            ## -----------------------------------------------------
+                    # else:
+                    #     ## -------------------------------------------------------------------------
+                    #     if not tradingOrders[i]['subOrders']['level0']['status']:
+                    #         self.sendTradingOrder(tradingOrders = tradingOrders,
+                    #                               orderDict     = tradingOrders[i],
+                    #                               orderIDList   = orderIDList,
+                    #                               priceType     = 'limit',
+                    #                               volume        = tradingOrders[i]['subOrders']['level0']['volume'],
+                    #                               price         = price_0)
+                    #         tradingOrders[i]['subOrders']['level0']['status'] = 'sended'
+                    #         return
+                    #     ## -------------------------------------------------------------------------
+                    #     elif not tradingOrders[i]['subOrders'][l][status_slow]:
+                    #         self.sendTradingOrder(tradingOrders = tradingOrders,
+                    #                               orderDict     = tradingOrders[i],
+                    #                               orderIDList   = orderIDList,
+                    #                               priceType     = 'limit',
+                    #                               volume        = tradingOrders[i]['subOrders'][l]['volume'],
+                    #                               price         = price_0,
+                    #                               addTick       = deltaTick_slow)
+                    #         tradingOrders[i]['subOrders'][l][status_slow] = 'sended'
+                    #         ## ----
+                    #         ## 要不要继续下单
+                    #         # return
+                    #         ## ----
+                    #         ## -----------------------------------------------------
+
+                    if not tradingOrders[i]['subOrders'][l][status_slow]:
+                        self.sendTradingOrder(
+                            tradingOrders = tradingOrders,
+                            orderDict     = tradingOrders[i],
+                            orderIDList   = orderIDList,
+                            priceType     = 'limit',
+                            volume        = tradingOrders[i]['subOrders'][l]['volume'],
+                            price         = price_0,
+                            addTick       = deltaTick_slow)
+                        tradingOrders[i]['subOrders'][l][status_slow] = 'sended'
+                        ## -----------------------------------------------------
+
                 ## ---------------------------------------------------------------------------------
 
             elif (self.tradingBetween and 
