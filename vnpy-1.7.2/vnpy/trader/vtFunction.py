@@ -5,6 +5,7 @@
 """
 
 import os,sys,subprocess
+import socket
 import decimal
 import json
 import re
@@ -71,7 +72,6 @@ def loadIconPath(iconName):
     """加载程序图标路径"""
     global iconPathDict
     return iconPathDict.get(iconName, '')
-
 
 
 #----------------------------------------------------------------------
@@ -212,6 +212,31 @@ def dbMySQLSend(dbName, query):
         conn.close()
 ## =============================================================================
 
+
+## =============================================================================
+## william
+## 实现 MySQL 数据在本地数据库与远程服务器数据库的同步
+## -----------------------------------------------------------------------------
+def dbMySQLSync(fromHost, toHost, fromDB, toDB, tableName = '', condition = ''):
+    """同步 MySQL 数据"""
+    ## ------------------------------------------------------
+    ## condition 格式如下
+    ## "--where='TradingDay = {}'".format(stratOI.tradingDay)
+    ## ------------------------------------------------------
+    cmd = '''mysqldump -h '{fromHost}' -ufl -pabc@123 --opt --compress {fromDB} {tableName} {condition} | mysql -h '{toHost}' -ufl -pabc@123 {toDB}'''.format(
+        fromHost = fromHost,
+        toHost = toHost,
+        fromDB = fromDB, 
+        toDB = toDB,
+        tableName = tableName,
+        condition = condition)
+    try:
+        subprocess.call(cmd, shell=True, stdout=DEVNULL, stderr=DEVNULL)
+    except:
+        None
+## =============================================================================
+
+
 ## =============================================================================
 ## william
 ## 从 MySQL 数据库查询数据
@@ -332,9 +357,18 @@ def sendMail(accountName, content):
     ## ---------------------------------------------------------------------
     try:
         smtpObj = smtplib.SMTP('localhost')
-        # smtpObj.sendmail(sender, receiversMain + receiversOthers, message.as_string())
-        smtpObj.sendmail(sender, receiversMain, message.as_string())
+        smtpObj.sendmail(sender, receiversMain + receiversOthers, message.as_string())
+        # smtpObj.sendmail(sender, receiversMain, message.as_string())
         print(u'预警邮件发送成功')
     except smtplib.SMTPException:
         print(u'预警邮件发送失败')
     ## ---------------------------------------------------------------------
+
+def getHostIP():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        return s.getsockname()[0]
+        s.close()
+    except:
+        return None
