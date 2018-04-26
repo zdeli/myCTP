@@ -787,7 +787,10 @@ class OIStrategy(CtaTemplate):
             self.updateOrderInfo()
             ## ---------------------------------------
             if self.accountID in self.WINNER_STRATEGY:
-                self.updateLastTickInfo()
+                try:
+                    self.updateLastTickInfo()
+                except:
+                    None
             ## ---------------------------------------
             
             if self.tradingStart:
@@ -801,6 +804,24 @@ class OIStrategy(CtaTemplate):
                 self.updateFailedInfo(
                     tradingOrders = self.tradingOrdersClose, 
                     tradedOrders  = self.tradedOrdersClose)
+            ## -----------------------------------------------------------------
+            ## 同步数据
+            if self.ip == '172.16.166.234':
+                return
+            for tbl in ['positionInfo','tradingInfo','UpperLowerInfo','workingInfo']:
+                if tbl in ['tradingInfo']:
+                    condition = "--where='TradingDay = {}'".format(self.tradingDay)
+                else:
+                    condition = ""
+                vtFunction.dbMySQLSync(
+                    # fromHost = '192.168.1.135', 
+                    fromHost = globalSetting().vtSetting['mysqlHost'],
+                    toHost = '47.98.117.71', 
+                    fromDB = self.ctaEngine.mainEngine.dataBase, 
+                    toDB = self.ctaEngine.mainEngine.dataBase,
+                    tableName = tbl,
+                    condition = condition)
+            ## -----------------------------------------------------------------
 
     ## =========================================================================
     ## william
