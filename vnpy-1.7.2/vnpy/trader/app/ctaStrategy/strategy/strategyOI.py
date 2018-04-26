@@ -123,6 +123,10 @@ class OIStrategy(CtaTemplate):
                               'level2':{'weight': 0, 'deltaTick': 2}
                              }
         self.totalOrderLevel = 1 + (len(self.subOrdersLevel) - 1) * 2
+        self.realOrderLevel = len(
+            [k for k in self.subOrdersLevel.keys() 
+                   if self.subOrdersLevel[k]['weight'] != 0]
+            )
         ## =====================================================================
 
         ## =====================================================================
@@ -224,6 +228,7 @@ class OIStrategy(CtaTemplate):
                         'vtOrderIDList' : ast.literal_eval(tempCum.loc[i, 'vtOrderIDList'])
                         }
         ## =====================================================================
+
 
         ## =====================================================================
         ## 涨跌停的订单
@@ -787,10 +792,7 @@ class OIStrategy(CtaTemplate):
             self.updateOrderInfo()
             ## ---------------------------------------
             if self.accountID in self.WINNER_STRATEGY:
-                try:
-                    self.updateLastTickInfo()
-                except:
-                    None
+                self.updateLastTickInfo()
             ## ---------------------------------------
             
             if self.tradingStart:
@@ -798,29 +800,33 @@ class OIStrategy(CtaTemplate):
                 self.updateWorkingInfo(self.tradingOrdersClose, 'close')
                 ## UpperLowerCum
                 self.updateWorkingInfo(self.tradingOrdersUpperLowerCum, 'ul')
-                ## Winner/Loser
-                self.updateWorkingInfo(self.tradingOrdersWinner, 'winner')
+
+                if self.accountID in self.WINNER_STRATEGY:
+                    ## Winner/Loser
+                    self.updateWorkingInfo(self.tradingOrdersWinner, 'winner')
+
             if (h == 15 and self.trading):
                 self.updateFailedInfo(
                     tradingOrders = self.tradingOrdersClose, 
                     tradedOrders  = self.tradedOrdersClose)
             ## -----------------------------------------------------------------
             ## 同步数据
-            if self.ip == '172.16.166.234':
-                return
-            for tbl in ['positionInfo','tradingInfo','UpperLowerInfo','workingInfo']:
-                if tbl in ['tradingInfo']:
-                    condition = "--where='TradingDay = {}'".format(self.tradingDay)
-                else:
-                    condition = ""
-                vtFunction.dbMySQLSync(
-                    # fromHost = '192.168.1.135', 
-                    fromHost = globalSetting().vtSetting['mysqlHost'],
-                    toHost = '47.98.117.71', 
-                    fromDB = self.ctaEngine.mainEngine.dataBase, 
-                    toDB = self.ctaEngine.mainEngine.dataBase,
-                    tableName = tbl,
-                    condition = condition)
+            # if self.ip == '172.16.166.234':
+            #     return
+
+            # for tbl in ['positionInfo','tradingInfo','UpperLowerInfo','workingInfo']:
+            #     if tbl in ['tradingInfo']:
+            #         condition = "--where='TradingDay = {}'".format(self.tradingDay)
+            #     else:
+            #         condition = ""
+            #     vtFunction.dbMySQLSync(
+            #         # fromHost = '192.168.1.135', 
+            #         fromHost = globalSetting().vtSetting['mysqlHost'],
+            #         toHost = '47.98.117.71', 
+            #         fromDB = self.ctaEngine.mainEngine.dataBase, 
+            #         toDB = self.ctaEngine.mainEngine.dataBase,
+            #         tableName = tbl,
+            #         condition = condition)
             ## -----------------------------------------------------------------
 
     ## =========================================================================
