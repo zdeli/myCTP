@@ -231,7 +231,9 @@ def dbMySQLSync(fromHost, toHost, fromDB, toDB, tableName = '', condition = ''):
         tableName = tableName,
         condition = condition)
     try:
-        subprocess.call(cmd, shell=True, stdout=DEVNULL, stderr=DEVNULL)
+        ## 不显示 shell 内容
+        ## stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        subprocess.call(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     except:
         None
 ## =============================================================================
