@@ -47,7 +47,7 @@ class CtaTemplate(object):
     vtSymbol = EMPTY_STRING        # 交易的合约vt系统代码    
     productClass = EMPTY_STRING    # 产品类型（只有IB接口需要）
     currency = EMPTY_STRING        # 货币（只有IB接口需要）
-    
+    ip = vtFunction.getHostIP()
     ## -------------------------------------------------------------------------
     ## 各种控制条件
     ## 策略的基本变量，由引擎管理
@@ -935,7 +935,7 @@ class CtaTemplate(object):
         if (h == self.tradingCloseHour and 
             (self.tradingCloseMinute1 <= m <= self.tradingCloseMinute1 or
              self.tradingCloseMinute2-1) <= m <= (self.tradingCloseMinute2-1) and 
-            s <= 20 and (s % 10 == 0)):
+            s <= 30 and (s % 10 == 0)):
             ## -----------------------------------------------------------------
             if (len(self.vtOrderIDListOpen) != 0 or 
                 len(self.vtOrderIDListClose) != 0 or 
@@ -957,7 +957,7 @@ class CtaTemplate(object):
         ## 生成收盘交易的订单
         if (h == self.tradingCloseHour and 
             m in [self.tradingCloseMinute1, (self.tradingCloseMinute2-1)] and 
-            20 <= s < 30  and 
+            20 <= s < 40 and 
             self.ctaEngine.mainEngine.multiStrategy and 
             (s == 29 or s % 10 == 0)):
             self.writeCtaLog(u'Rscript end_signal.R')
@@ -1289,18 +1289,22 @@ class CtaTemplate(object):
             return
         ## ---------------------------------------------------------------------
         if not (15 < datetime.now().hour < 20):
-            v = [self.ctaEngine.lastTickDict[k].values() 
-                    for k in self.ctaEngine.lastTickDict.keys()]
-            k = [self.ctaEngine.lastTickDict[k].keys() 
-                    for k in self.ctaEngine.lastTickDict.keys()]
-            df = pd.DataFrame(v, columns = k[0])
-            df.rename(columns={'datetime': 'updateTime'}, inplace=True)
-            df['TradingDay'] = self.ctaEngine.tradingDay
+            try:
+                v = [self.ctaEngine.lastTickDict[k].values() 
+                        for k in self.ctaEngine.lastTickDict.keys()]
+                k = [self.ctaEngine.lastTickDict[k].keys() 
+                        for k in self.ctaEngine.lastTickDict.keys()]
+                df = pd.DataFrame(v, columns = k[0])
+                df.rename(columns={'datetime': 'updateTime'}, inplace=True)
+                df['TradingDay'] = self.ctaEngine.tradingDay
 
-            self.saveMySQL(df = df, 
-                           tbl = 'lastTickInfo', 
-                           over = 'replace',
-                           sourceID = 'ctaTemplate.updateLastTickInfo()')
+                self.saveMySQL(df = df, 
+                               tbl = 'lastTickInfo', 
+                               over = 'replace',
+                               sourceID = 'ctaTemplate.updateLastTickInfo()')
+            except:
+                self.writeCtaLog(u'updateLastTickInfo 更新 MySQL 数据库出错',
+                                 logLevel = ERROR)
         else:
             try:
                 conn = vtFunction.dbMySQLConnect(self.ctaEngine.mainEngine.dataBase)
