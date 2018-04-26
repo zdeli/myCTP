@@ -748,9 +748,10 @@ class AccountMonitor(BasicMonitor):
         super(AccountMonitor, self).__init__(mainEngine, eventEngine, parent)
         
         d = OrderedDict()
-        # d['accountID']      = {'chinese':vtText.ACCOUNT_ID, 'cellType':GrayCell}
         d['accountName']    = {'chinese':vtText.ACCOUNT_NAME, 'cellType':ColdColorCell}
         d['preBalance']     = {'chinese':vtText.PRE_BALANCE, 'cellType':BasicCell}
+        d['deposit']        = {'chinese':vtText.DEPOSIT, 'cellType':BasicCell}
+        d['withdraw']       = {'chinese':vtText.WITHDRAW, 'cellType':BasicCell}
         d['balance']        = {'chinese':vtText.BALANCE, 'cellType':BasicCell}
         d['available']      = {'chinese':vtText.AVAILABLE, 'cellType':BasicCell}
         d['value']          = {'chinese':vtText.VALUE, 'cellType':ColdColorCell}
@@ -869,12 +870,17 @@ class TradingWidget(QtWidgets.QFrame):
         self.comboOffset.addItems(self.offsetList)
 
         self.spinPrice = QtWidgets.QDoubleSpinBox()
-        self.spinPrice.setDecimals(4)
+        ## 设置价格的小数点部分
+        # self.spinPrice.setDecimals(4)
+        self.spinPrice.setDecimals(3)
         self.spinPrice.setMinimum(0)
-        self.spinPrice.setMaximum(100000)
+        ## 价格显示的最大范围
+        # self.spinPrice.setMaximum(100000)
+        self.spinPrice.setMaximum(999999)
 
         self.spinVolume = QtWidgets.QSpinBox()
         self.spinVolume.setMinimum(0)
+        ## 设置最大的下单数量
         self.spinVolume.setMaximum(1000000)
 
         self.comboPriceType = QtWidgets.QComboBox()
