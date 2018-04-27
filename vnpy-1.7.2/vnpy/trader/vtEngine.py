@@ -8,6 +8,7 @@ from collections import OrderedDict
 from datetime import datetime
 from time import sleep
 from copy import copy
+import math
 
 # from pymongo import MongoClient, ASCENDING
 ## mongo 错误识别，这个不能删除
@@ -143,7 +144,7 @@ class MainEngine(object):
 
         if gateway:
             gateway.connect(accountID)
-            sleep(1)
+            sleep(3)
             if gatewayName == 'CTP':
                 ## -------------------------------------------------------------
                 if not self.gatewayDict['CTP'].mdConnected:
@@ -173,6 +174,7 @@ class MainEngine(object):
                                                 content = u'CTP 账户登录失败')
                             self.sendMailTime = datetime.now()
                             self.sendMailCounter += 1
+                ## -------------------------------------------------------------
 
     #----------------------------------------------------------------------
     def subscribe(self, subscribeReq, gatewayName):
@@ -229,7 +231,7 @@ class MainEngine(object):
     ## william
     ## 全平
     ############################################################################
-    def closeAll(self):
+    def closeAll(self, pct = 1):
         """一键全平"""
         ## -----------------------------------------------------------------
         ## 先撤销所有的订单
@@ -268,7 +270,8 @@ class MainEngine(object):
             ## -----------------------------------------------------------------
             try:
                 tempInstrumentID = CTPAccountPosInfo[i]['vtSymbol']
-                tempVolume       = CTPAccountPosInfo[i]['position']
+                # tempVolume       = CTPAccountPosInfo[i]['position']
+                tempVolume       = int(math.ceil(CTPAccountPosInfo[i]['position'] * pct))
                 tempPriceTick    = self.getContract(tempInstrumentID).priceTick
                 tempLastPrice    = self.gatewayDict['CTP'].lastTickDict[tempInstrumentID]['lastPrice']
                 tempUpperLimit   = self.gatewayDict['CTP'].lastTickDict[tempInstrumentID]['upperLimit']
@@ -845,7 +848,7 @@ class DataEngine(object):
         tempAccountInfo = copy(self.accountInfo)
         tempAccountInfo.TradingDay = self.tradingDate.strftime('%Y-%m-%d')
         tempAccountInfo.updateTime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        tempAccountInfo.value = float(tempAccountInfo.value.replace(',',''))
+        tempAccountInfo.value = float(str(tempAccountInfo.value).replace(',',''))
         
         self.accountBalance = pd.DataFrame([[tempAccountInfo.__dict__[k] for k in self.accountInfoFields]], 
                                            columns = self.accountInfoFields)
