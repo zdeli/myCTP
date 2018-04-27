@@ -835,6 +835,10 @@ class TradingWidget(QtWidgets.QFrame):
         gatewayNameList = [d['gatewayName'] for d in l]
         self.gatewayList.extend(gatewayNameList)
 
+        ## william
+        ## 一键平仓比例设置
+        self.oneKeyCloseList = ['','1/5','1/4','1/3','1/2','1/1']
+
         self.initUi()
         self.connectSignal()
 
@@ -859,6 +863,8 @@ class TradingWidget(QtWidgets.QFrame):
         labelCurrency = QtWidgets.QLabel(vtText.CURRENCY)
         labelProductClass = QtWidgets.QLabel(vtText.PRODUCT_CLASS)
         labelGateway = QtWidgets.QLabel(vtText.GATEWAY)
+        ## william
+        labelOneKeyClose = QtWidgets.QLabel(vtText.ONE_KEY_CLOSE)
 
         self.lineSymbol = QtWidgets.QLineEdit()
         self.lineName = QtWidgets.QLineEdit()
@@ -898,6 +904,10 @@ class TradingWidget(QtWidgets.QFrame):
         self.comboGateway = QtWidgets.QComboBox()
         self.comboGateway.addItems(self.gatewayList)          
 
+        ## william
+        self.comboOneKeyClose = QtWidgets.QComboBox()
+        self.comboOneKeyClose.addItems(self.oneKeyCloseList)  
+
         gridleft = QtWidgets.QGridLayout()
         gridleft.addWidget(labelSymbol, 0, 0)
         gridleft.addWidget(labelName, 1, 0)
@@ -910,6 +920,8 @@ class TradingWidget(QtWidgets.QFrame):
         gridleft.addWidget(labelCurrency, 8, 0)
         gridleft.addWidget(labelProductClass, 9, 0)   
         gridleft.addWidget(labelGateway, 10, 0)
+        ## william
+        gridleft.addWidget(labelOneKeyClose, 11, 0)
         
         gridleft.addWidget(self.lineSymbol, 0, 1, 1, -1)
         gridleft.addWidget(self.lineName, 1, 1, 1, -1)
@@ -923,6 +935,8 @@ class TradingWidget(QtWidgets.QFrame):
         gridleft.addWidget(self.comboCurrency, 8, 1, 1, -1)
         gridleft.addWidget(self.comboProductClass, 9, 1, 1, -1)
         gridleft.addWidget(self.comboGateway, 10, 1, 1, -1)
+        ## william
+        gridleft.addWidget(self.comboOneKeyClose, 11, 1, 1, -1)
 
         # 右边部分
         labelBid1 = QtWidgets.QLabel(vtText.BID_1)
@@ -1003,6 +1017,10 @@ class TradingWidget(QtWidgets.QFrame):
         gridRight.addWidget(self.labelBidVolume4, 9, 2)
         gridRight.addWidget(self.labelBidVolume5, 10, 2)
 
+        ## william
+        buttonOneKeyClose = QtWidgets.QPushButton(vtText.ONE_KEY_CLOSE)
+        gridRight.addWidget(buttonOneKeyClose, 11, 0, 2, -1)
+
         # 发单按钮
         buttonSendOrder = QtWidgets.QPushButton(vtText.SEND_ORDER)
         buttonCancelAll = QtWidgets.QPushButton(vtText.CANCEL_ALL)
@@ -1018,6 +1036,10 @@ class TradingWidget(QtWidgets.QFrame):
         ## =====================================================================
 
         size = buttonSendOrder.sizeHint()
+        ##　william
+        ## 一键下单平仓
+        buttonOneKeyClose.setMinimumHeight(size.height()*2.25)
+        
         buttonSendOrder.setMinimumHeight(size.height()*1.5)   # 把按钮高度设为默认两倍
         buttonCancelAll.setMinimumHeight(size.height()*1.5)
         ## =====================================================================
@@ -1057,6 +1079,8 @@ class TradingWidget(QtWidgets.QFrame):
         buttonCancelAll.clicked.connect(self.cancelAll)
         ## =====================================================================
         ## william
+        ## 一键下单
+        buttonOneKeyClose.clicked.connect(self.oneKeyClose)
         ## 全撤
         buttonStartAll.clicked.connect(self.startAll)
         ## 全撤
@@ -1184,6 +1208,24 @@ class TradingWidget(QtWidgets.QFrame):
         """连接Signal"""
         self.signal.connect(self.updateTick)
 
+    def oneKeyClose(self):
+        """一键按比例平仓"""
+        if not self.comboOneKeyClose.currentText():
+            return
+
+        reply = QtWidgets.QMessageBox.question(self, vtText.ONE_KEY_CLOSE,
+                                   vtText.CONFIRM_ONE_KEY_CLOSE, QtWidgets.QMessageBox.Yes | 
+                                   QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.No)
+
+        if reply == QtWidgets.QMessageBox.Yes: 
+            closePct = self.comboOneKeyClose.currentText()
+            closePct = round(1.0 / int(closePct.replace('1/','')), 2)
+            ## -----------------------
+            self.mainEngine.closeAll(closePct)
+            ## -----------------------
+        else:
+            pass
+
     #----------------------------------------------------------------------
     def sendOrder(self):
         """发单"""
@@ -1218,7 +1260,7 @@ class TradingWidget(QtWidgets.QFrame):
         req.productClass = productClass
         
         self.mainEngine.sendOrder(req, gatewayName)
-            
+        
     ############################################################################
     ## william
     ## 全撤
