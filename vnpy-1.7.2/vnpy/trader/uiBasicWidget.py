@@ -19,7 +19,8 @@ from .vtConstant import *
 COLOR_RED = QtGui.QColor('red')
 COLOR_GRAY = QtGui.QColor('gray')
 COLOR_GREEN = QtGui.QColor('green')
-
+COLOR_BID = '#FF55A3'
+COLOR_ASK = '#00CC99'
 
 ########################################################################
 class BasicCell(QtWidgets.QTableWidgetItem):
@@ -850,6 +851,10 @@ class TradingWidget(QtWidgets.QFrame):
         self.setFrameShape(self.Box)    # 设置边框
         self.setLineWidth(1)           
 
+        ## william
+        ## 设置颜色
+        ## labelSymbol.setStyleSheet('color: yellow')
+
         # 左边部分
         labelSymbol = QtWidgets.QLabel(vtText.CONTRACT_SYMBOL)
         labelName =  QtWidgets.QLabel(vtText.CONTRACT_NAME)
@@ -945,11 +950,27 @@ class TradingWidget(QtWidgets.QFrame):
         labelBid4 = QtWidgets.QLabel(vtText.BID_4)
         labelBid5 = QtWidgets.QLabel(vtText.BID_5)
 
+        ## ---------------------------------------
+        labelBid1.setStyleSheet('color: {}'.format(COLOR_BID))
+        labelBid2.setStyleSheet('color: {}'.format(COLOR_BID))
+        labelBid3.setStyleSheet('color: {}'.format(COLOR_BID))
+        labelBid4.setStyleSheet('color: {}'.format(COLOR_BID))
+        labelBid5.setStyleSheet('color: {}'.format(COLOR_BID))
+        ## ---------------------------------------
+
         labelAsk1 = QtWidgets.QLabel(vtText.ASK_1)
         labelAsk2 = QtWidgets.QLabel(vtText.ASK_2)
         labelAsk3 = QtWidgets.QLabel(vtText.ASK_3)
         labelAsk4 = QtWidgets.QLabel(vtText.ASK_4)
         labelAsk5 = QtWidgets.QLabel(vtText.ASK_5)
+
+        ## ---------------------------------------
+        labelAsk1.setStyleSheet('color: {}'.format(COLOR_ASK))
+        labelAsk2.setStyleSheet('color: {}'.format(COLOR_ASK))
+        labelAsk3.setStyleSheet('color: {}'.format(COLOR_ASK))
+        labelAsk4.setStyleSheet('color: {}'.format(COLOR_ASK))
+        labelAsk5.setStyleSheet('color: {}'.format(COLOR_ASK))
+        ## ---------------------------------------
 
         self.labelBidPrice1 = QtWidgets.QLabel()
         self.labelBidPrice2 = QtWidgets.QLabel()
@@ -962,6 +983,21 @@ class TradingWidget(QtWidgets.QFrame):
         self.labelBidVolume4 = QtWidgets.QLabel()
         self.labelBidVolume5 = QtWidgets.QLabel()	
 
+        ## ---------------------------------------
+        self.labelBidPrice1.setStyleSheet('color: {}'.format(COLOR_BID))
+        self.labelBidPrice2.setStyleSheet('color: {}'.format(COLOR_BID))
+        self.labelBidPrice3.setStyleSheet('color: {}'.format(COLOR_BID))
+        self.labelBidPrice4.setStyleSheet('color: {}'.format(COLOR_BID))
+        self.labelBidPrice5.setStyleSheet('color: {}'.format(COLOR_BID))
+
+        self.labelBidVolume1.setStyleSheet('color: {}'.format(COLOR_BID))
+        self.labelBidVolume2.setStyleSheet('color: {}'.format(COLOR_BID))
+        self.labelBidVolume3.setStyleSheet('color: {}'.format(COLOR_BID))
+        self.labelBidVolume4.setStyleSheet('color: {}'.format(COLOR_BID))
+        self.labelBidVolume5.setStyleSheet('color: {}'.format(COLOR_BID))
+        ## ---------------------------------------
+
+
         self.labelAskPrice1 = QtWidgets.QLabel()
         self.labelAskPrice2 = QtWidgets.QLabel()
         self.labelAskPrice3 = QtWidgets.QLabel()
@@ -973,9 +1009,29 @@ class TradingWidget(QtWidgets.QFrame):
         self.labelAskVolume4 = QtWidgets.QLabel()
         self.labelAskVolume5 = QtWidgets.QLabel()	
 
+        ## ---------------------------------------
+        self.labelAskPrice1.setStyleSheet('color: {}'.format(COLOR_ASK))
+        self.labelAskPrice2.setStyleSheet('color: {}'.format(COLOR_ASK))
+        self.labelAskPrice3.setStyleSheet('color: {}'.format(COLOR_ASK))
+        self.labelAskPrice4.setStyleSheet('color: {}'.format(COLOR_ASK))
+        self.labelAskPrice5.setStyleSheet('color: {}'.format(COLOR_ASK))
+
+        self.labelAskVolume1.setStyleSheet('color: {}'.format(COLOR_ASK))
+        self.labelAskVolume2.setStyleSheet('color: {}'.format(COLOR_ASK))
+        self.labelAskVolume3.setStyleSheet('color: {}'.format(COLOR_ASK))
+        self.labelAskVolume4.setStyleSheet('color: {}'.format(COLOR_ASK))
+        self.labelAskVolume5.setStyleSheet('color: {}'.format(COLOR_ASK))
+        ## ---------------------------------------
+
         labelLast = QtWidgets.QLabel(vtText.LAST)
         self.labelLastPrice = QtWidgets.QLabel()
         self.labelReturn = QtWidgets.QLabel()
+
+        ## ---------------------------------------
+        labelLast.setStyleSheet('color: yellow')
+        self.labelLastPrice.setStyleSheet('color: yellow')
+        self.labelReturn.setStyleSheet('color: yellow')
+        ## ---------------------------------------
 
         self.labelLastPrice.setMinimumWidth(60)
         self.labelReturn.setMinimumWidth(60)
@@ -1018,6 +1074,7 @@ class TradingWidget(QtWidgets.QFrame):
         gridRight.addWidget(self.labelBidVolume5, 10, 2)
 
         ## william
+        ## 一键平仓
         buttonOneKeyClose = QtWidgets.QPushButton(vtText.ONE_KEY_CLOSE)
         gridRight.addWidget(buttonOneKeyClose, 11, 0, 2, -1)
 
