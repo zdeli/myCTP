@@ -16,11 +16,16 @@ from .vtFunction import jsonPathDict
 from .vtConstant import *
 
 
-COLOR_RED = QtGui.QColor('red')
-COLOR_GRAY = QtGui.QColor('gray')
-COLOR_GREEN = QtGui.QColor('green')
-COLOR_BID = '#FF55A3'
 COLOR_ASK = '#00CC99'
+COLOR_BID = '#FF66CC'
+
+# COLOR_RED = QtGui.QColor('red')
+# COLOR_GRAY = QtGui.QColor('gray')
+# COLOR_GREEN = QtGui.QColor('green')
+
+COLOR_RED = QtGui.QColor(COLOR_BID)
+COLOR_GRAY = QtGui.QColor('gray')
+COLOR_GREEN = QtGui.QColor(COLOR_ASK)
 
 ########################################################################
 class BasicCell(QtWidgets.QTableWidgetItem):
@@ -84,9 +89,11 @@ class DirectionCell(QtWidgets.QTableWidgetItem):
     def setContent(self, text):
         """设置内容"""
         if text == DIRECTION_LONG or text == DIRECTION_NET:
-            self.setForeground(QtGui.QColor('red'))
+            # self.setForeground(QtGui.QColor('red'))
+            self.setForeground(QtGui.QColor(COLOR_BID))
         elif text == DIRECTION_SHORT:
-            self.setForeground(QtGui.QColor('green'))
+            # self.setForeground(QtGui.QColor('green'))
+            self.setForeground(QtGui.QColor(COLOR_ASK))
         self.setText(text)
 
 
@@ -128,7 +135,8 @@ class BidCell(QtWidgets.QTableWidgetItem):
         self.data = None
 
         self.setForeground(QtGui.QColor('black'))
-        self.setBackground(QtGui.QColor(255,174,201))
+        self.setBackground(QtGui.QColor(COLOR_BID))
+        # self.setBackground(QtGui.QColor(255,174,201))
         
         if text:
             self.setContent(text)
@@ -150,7 +158,8 @@ class AskCell(QtWidgets.QTableWidgetItem):
         self.data = None
 
         self.setForeground(QtGui.QColor('black'))
-        self.setBackground(QtGui.QColor(160,255,160))
+        self.setBackground(QtGui.QColor(COLOR_ASK))
+        # self.setBackground(QtGui.QColor(160,255,160))
         
         if text:
             self.setContent(text)
@@ -202,14 +211,18 @@ class PnlCell(QtWidgets.QTableWidgetItem):
 
         try:
             value = float(text)
-            if value > 0 and self.color != 'red':
-                self.color = 'red'
+            # if value > 0 and self.color != 'red':
+            if value > 0 and self.color != COLOR_BID:
+                # self.color = 'red'
+                self.color = COLOR_BID
                 self.setForeground(COLOR_RED)
             elif value == 0 and self.color != 'gray':
                 self.color = 'gray'
                 self.setForeground(COLOR_GRAY)    
-            elif value < 0 and self.color != 'green':
-                self.color = 'green'
+            # elif value < 0 and self.color != 'green':
+            elif value < 0 and self.color != COLOR_ASK:
+                # self.color = 'green'
+                self.color = COLOR_ASK
                 self.setForeground(COLOR_GREEN)
         except ValueError:
             pass
@@ -236,11 +249,13 @@ class NAVCell(QtWidgets.QTableWidgetItem):
             value = float(text)
             self.setForeground(QtGui.QColor('black'))
             if value > 1:
-                self.setBackground(QtGui.QColor(255,174,201))
+                self.setBackground(QtGui.QColor(COLOR_BID))
+                # self.setBackground(QtGui.QColor(255,174,201))
             elif value == 1:
                 self.setBackground(QtGui.QColor('gray'))
             elif value < 1:
-                self.setBackground(QtGui.QColor(160,255,160))
+                self.setBackground(QtGui.QColor(COLOR_ASK))
+                # self.setBackground(QtGui.QColor(160,255,160))
         except ValueError:
             pass
 
@@ -756,7 +771,8 @@ class AccountMonitor(BasicMonitor):
         d['balance']        = {'chinese':vtText.BALANCE, 'cellType':BasicCell}
         d['available']      = {'chinese':vtText.AVAILABLE, 'cellType':BasicCell}
         d['value']          = {'chinese':vtText.VALUE, 'cellType':ColdColorCell}
-        d['leverage']       = {'chinese':vtText.LEVERAGE, 'cellType':BidCell}
+        d['leverage']       = {'chinese':vtText.LEVERAGE, 'cellType':ColdColorCell}
+        # d['leverage']       = {'chinese':vtText.LEVERAGE, 'cellType':BidCell}
         d['commission']     = {'chinese':vtText.COMMISSION, 'cellType':GrayCell}
         d['margin']         = {'chinese':vtText.MARGIN, 'cellType':BasicCell}
         d['closeProfit']    = {'chinese':vtText.CLOSE_PROFIT, 'cellType':PnlCell}
