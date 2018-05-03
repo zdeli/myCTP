@@ -281,6 +281,9 @@ class VtAccountData(VtBaseData):
         """Constructor"""
         super(VtAccountData, self).__init__()
         
+        self.TradingDay     = EMPTY_STRING
+        self.updateTime     = EMPTY_STRING
+
         # 账号代码相关
         self.accountID      = EMPTY_STRING      # 账户代码
         self.accountName    = EMPTY_STRING      # 账户名称
@@ -288,17 +291,32 @@ class VtAccountData(VtBaseData):
         
         # 数值相关
         self.preBalance     = EMPTY_FLOAT       # 昨日账户结算净值
-        self.preFlowMoney   = EMPTY_FLOAT       # 昨日流动资产
         self.balance        = EMPTY_FLOAT       # 账户净值
+
         self.available      = EMPTY_FLOAT       # 可用资金
         self.value          = EMPTY_FLOAT       # 合约价值
-        self.leverage       = EMPTY_FLOAT       # 杆杠率
-        self.commission     = EMPTY_FLOAT       # 今日手续费
         self.margin         = EMPTY_FLOAT       # 保证金占用
+        self.marginPct      = EMPTY_FLOAT       # 保证金占用
+        self.leverage       = EMPTY_FLOAT       # 杆杠率
+
+        self.deposit        = EMPTY_FLOAT       # 期货账户入金
+        self.withdraw       = EMPTY_FLOAT       # 期货账户出金
+
         self.closeProfit    = EMPTY_FLOAT       # 平仓盈亏
         self.positionProfit = EMPTY_FLOAT       # 持仓盈亏
+        self.profit         = EMPTY_FLOAT       # 总盈亏
+        self.commission     = EMPTY_FLOAT       # 今日手续费
+
+        self.flowCapital    = EMPTY_FLOAT       # 流动（理财）资产
+        self.banking        = EMPTY_FLOAT       # 银行现金存款
+        self.fee            = EMPTY_FLOAT       # 托管费用
+        
+        self.asset          = EMPTY_FLOAT       # 总资产
+        self.shares         = EMPTY_FLOAT       # 总份额
+
+        self.preNav         = EMPTY_FLOAT       # 基金单位昨净值
         self.nav            = EMPTY_FLOAT       # 基金单位净值
-        self.volitility     = EMPTY_FLOAT       # 收益波动
+        self.chgpct         = EMPTY_FLOAT       # 收益波动
 
         ########################################################################
         ## william
