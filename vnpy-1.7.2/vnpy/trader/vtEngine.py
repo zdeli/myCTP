@@ -552,12 +552,13 @@ class DataEngine(object):
 
         self.positionInfoFields = ['symbol','direction','price','position','positionProfit','size']
         self.accountInfoFields  = ['accountID','TradingDay','updateTime',
+                                   'nav', 'chgpct', 
                                    'preBalance','balance',
                                    'available','value','margin','marginPct',
                                    'deposit','withdraw',
                                    'positionProfit','closeProfit','profit','commission',
                                    'flowCapital','banking','fee',
-                                   'asset','shares','nav']
+                                   'asset','shares']
         ########################################################################
 
 
