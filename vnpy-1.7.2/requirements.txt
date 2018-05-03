@@ -9,5 +9,4 @@ ConfigParser
 MySQL-python
 pymysql
 tabulate
-#futuquant
 wmi
