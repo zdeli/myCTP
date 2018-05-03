@@ -61,6 +61,8 @@ pip install --user -r requirements.txt
 conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/free/
 conda config --set show_channel_urls yes
 conda install -c quantopian ta-lib=0.4.9
+conda install pandas=0.18.0
+conda install libgcc
 
 ## =============================================================================
 #Install vn.py
@@ -84,7 +86,11 @@ msgpack-python
 qdarkstyle
 SortedContainers
 snappy
-futuquant
+ConfigParser
+MySQL-python
+pymysql
+tabulate
+#futuquant
 wmi
 ```
 
