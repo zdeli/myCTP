@@ -1049,9 +1049,14 @@ class CtpTdApi(TdApi):
         if len(self.navInfo):
             account.preNav = self.navInfo.NAV.values[0]
             account.flowCapital = self.navInfo.Currency.values[0]
+            account.banking = self.navInfo.Bank.values[0]
         else:
-            account.preNav = (account.preBalance + self.gateway.flowCapital) / self.preShares
+            if (account.preBalance == 0):
+                account.preNav = 1
+            else:
+                account.preNav = (account.preBalance + self.gateway.flowCapital) / self.preShares
             account.flowCapital = self.gateway.flowCapital
+            account.banking = 0
 
         ## 当日出入金换算份额
         fundingShares = int(math.floor((account.deposit - account.withdraw) / account.preNav))
@@ -1066,9 +1071,9 @@ class CtpTdApi(TdApi):
         ##　当日总份额
         account.shares = self.preShares + fundingShares
         ## 当日净值
-        account.nav = round((account.asset + self.feeAll) / account.shares,4)
+        account.nav = round((account.asset + self.feeAll + account.banking) / account.shares,4)
         ## 当日收益波动
-        account.volitility = round(account.nav / account.preNav - 1, 4) * 100
+        account.chgpct = round(account.nav / account.preNav - 1, 4) * 100
 
         ## 合约价值转化
         account.value = format(account.value, ',')
