@@ -149,9 +149,11 @@ class OIStrategy(CtaTemplate):
         self.tradingCloseMinute2 = 59
         self.accountID = globalSetting.accountID
         if self.ctaEngine.mainEngine.initialCapital >= 1e7:
+            self.randomNo = 15 + random.randint(-5,5)    ## 随机间隔多少秒再下单
+        elif self.ctaEngine.mainEngine.initialCapital >= 5e6:
             self.randomNo = 30 + random.randint(-5,5)    ## 随机间隔多少秒再下单
         else:
-            self.randomNo = 50 + random.randint(-5,5)    ## 随机间隔多少秒再下单
+            self.randomNo = 45 + random.randint(-5,5)    ## 随机间隔多少秒再下单
         ## =====================================================================
 
         ## ===================================================================== 
@@ -399,12 +401,17 @@ class OIStrategy(CtaTemplate):
             id in [self.tradingOrdersOpen[k]['vtSymbol'] 
                              for k in self.tradingOrdersOpen.keys()]):
             ####################################################################
+            if id[0:2] == 'SF':
+                tempOpenDiscount = 0.0018
+            else:
+                tempOpenDiscount = self.openDiscount
+                
             self.prepareTradingOrderSplit(
                 vtSymbol      = id,
                 tradingOrders = self.tradingOrdersOpen,
                 orderIDList   = self.vtOrderIDListOpen,
                 priceType     = 'limit',
-                discount      = self.openDiscount)
+                discount      = tempOpenDiscount)
         ## =====================================================================
 
         ## =====================================================================
