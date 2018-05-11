@@ -1,6 +1,7 @@
 # encoding: UTF-8
 
 '''
+hello
 本文件包含了CTA引擎中的策略开发用模板，开发策略时需要继承CtaTemplate类。
 '''
 
@@ -827,9 +828,9 @@ class CtaTemplate(object):
         ## ---------------------------------------------------------------------
         id = orderDict['vtSymbol']
         tempPriceTick = self.ctaEngine.tickInfo[id]['priceTick']
-        tempAskPrice1 = self.ctaEngine.lastTickDict[id]['askPrice1']
-        tempBidPrice1 = self.ctaEngine.lastTickDict[id]['bidPrice1']
-        tempLastPrice = self.ctaEngine.lastTickDict[id]['lastPrice']
+        # tempAskPrice1 = self.ctaEngine.lastTickDict[id]['askPrice1']
+        # tempBidPrice1 = self.ctaEngine.lastTickDict[id]['bidPrice1']
+        # tempLastPrice = self.ctaEngine.lastTickDict[id]['lastPrice']
         tempDirection = orderDict['direction']
         if volume:
             tempVolume = volume
@@ -841,16 +842,21 @@ class CtaTemplate(object):
         ## ---------------------------------------------------------------------
         if priceType == 'best':
             if tempDirection in ['buy','cover']:
-                tempBestPrice = tempBidPrice1 
+                # tempBestPrice = tempBidPrice1 
+                tempBestPrice = self.ctaEngine.lastTickDict[id]['bidPrice1']
             elif tempDirection in ['sell','short']:
-                tempBestPrice = tempAskPrice1
+                # tempBestPrice = tempAskPrice1
+                tempBestPrice = self.ctaEngine.lastTickDict[id]['askPrice1']
         elif priceType == 'chasing':
             if tempDirection in ['buy','cover']:
-                tempBestPrice = tempAskPrice1
+                # tempBestPrice = tempAskPrice1
+                tempBestPrice = self.ctaEngine.lastTickDict[id]['askPrice1']
             elif tempDirection in ['sell','short']:
-                tempBestPrice = tempBidPrice1 
+                # tempBestPrice = tempBidPrice1
+                tempBestPrice = self.ctaEngine.lastTickDict[id]['bidPrice1']
         elif priceType == 'last':
-            tempBestPrice = tempLastPrice
+            # tempBestPrice = tempLastPrice
+            tempBestPrice = self.ctaEngine.lastTickDict[id]['lastPrice']
         elif priceType == 'open':
             tempBestPrice = self.ctaEngine.lastTickDict[id]['openPrice']
         elif priceType == 'upper':
@@ -894,8 +900,10 @@ class CtaTemplate(object):
         ## ---------------------------------------------------------------------
         orderIDList.extend(vtOrderIDList)
 
-        tempKey = id + '-' + tempDirection
-        tradingOrders[tempKey]['vtOrderIDList'].extend(vtOrderIDList)
+        # tempKey = id + '-' + tempDirection
+        # tradingOrders[tempKey]['vtOrderIDList'].extend(vtOrderIDList)
+
+        tradingOrders[id+'-'+tempDirection]['vtOrderIDList'].extend(vtOrderIDList)
 
         self.tickTimer[id]= datetime.now()
         ## ---------------------------------------------------------------------
