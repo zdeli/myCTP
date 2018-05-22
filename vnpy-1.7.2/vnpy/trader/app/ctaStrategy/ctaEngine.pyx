@@ -40,19 +40,16 @@ from .strategy import STRATEGY_CLASS
 from vnpy.trader.vtGlobal import globalSetting
 from logging import INFO, ERROR
 import MySQLdb
-import pandas as pd
+# import pandas as pd
 
 ## 发送邮件通知
-import smtplib
-from email.mime.text import MIMEText
-from email.header import Header
 import codecs
+import ciso8601
 
 ########################################################################
 class CtaEngine(object):
     """CTA策略引擎"""
     settingFileName = 'CTA_setting.json'
-    # settingfilePath = vtFunction.getJsonPath(settingFileName, __file__)
     
     import inspect
     if not hasattr(sys.modules[__name__], '__file__'):
@@ -81,7 +78,9 @@ class CtaEngine(object):
         ## __格式是 date, 即 2017-01-01, 需要用 date 格式来匹配__
         ## nights: 夜盘日期,
         ## days:   日盘日期,
-        self.ChinaFuturesCalendar = self.mainEngine.dbMySQLQuery('dev', 
+        # self.ChinaFuturesCalendar = self.mainEngine.dbMySQLQuery('dev', 
+        #     """select * from ChinaFuturesCalendar where days >= 20170101;""")
+        self.ChinaFuturesCalendar = vtFunction.dbMySQLQuery('dev', 
             """select * from ChinaFuturesCalendar where days >= 20170101;""")
         ## =====================================================================
 
@@ -163,7 +162,14 @@ class CtaEngine(object):
         ## 有关订阅合约行情
         ## ---------------------------------------------------------------------
         ## 所有的主力合约
-        self.mainContracts = self.mainEngine.dbMySQLQuery(
+        # self.mainContracts = self.mainEngine.dbMySQLQuery(
+        #     'china_futures_bar',
+        #     """
+        #     select * 
+        #     from main_contract_daily 
+        #     where TradingDay = %s 
+        #     """ %self.lastTradingDay).Main_contract.values
+        self.mainContracts = vtFunction.dbMySQLQuery(
             'china_futures_bar',
             """
             select * 
@@ -266,7 +272,7 @@ class CtaEngine(object):
             
         # 委托转换
         reqList = self.mainEngine.convertOrderReq(req)
-        vtOrderIDList = []
+        cdef list vtOrderIDList = []
         
         if not reqList:
             return vtOrderIDList
@@ -424,9 +430,11 @@ class CtaEngine(object):
             if not tick.datetime:
                 tick.datetime = datetime.strptime(' '.join(
                                 [tick.date, tick.time]), '%Y%m%d %H:%M:%S.%f')
+                # tick.datetime = ciso8601.parse_datetime(' '.join(
+                #                 [tick.date, tick.time]), '%Y%m%d %H:%M:%S.%f')
         except ValueError:
             self.writeCtaLog(traceback.format_exc())
-            return        
+            return
         ## ---------------------------------------------------------------------
 
         ## ---------------------------------------------------------------------
@@ -462,7 +470,7 @@ class CtaEngine(object):
         """处理委托推送"""
         order = event.dict_['data']
         
-        vtOrderID = order.vtOrderID
+        cdef str vtOrderID = order.vtOrderID
         
         if vtOrderID in self.orderStrategyDict:
             strategy = self.orderStrategyDict[vtOrderID]            
@@ -829,14 +837,10 @@ class CtaEngine(object):
         pass
                 
     #----------------------------------------------------------------------
-    def roundToPriceTick(self, float priceTick, float price):
+    def roundToPriceTick(self, priceTick, price):
         """取整价格到合约最小价格变动"""
         if not priceTick:
             return price
-        ## ---------------------------------------------------------------------
-        # newPrice = round(price/priceTick, 0) * priceTick
-        # return newPrice    
-        ## ---------------------------------------------------------------------
         return round(price/priceTick, 0) * priceTick  
     
     #----------------------------------------------------------------------
@@ -861,40 +865,8 @@ class CtaEngine(object):
     ## 获取基金的 InstrumentID
     ############################################################################
     def fetchInstrumentID(self, dbName, tbName):
-        temp = self.mainEngine.dbMySQLQuery(dbName,
+        temp = vtFunction.dbMySQLQuery(dbName,
             """
             select * from %s
             """ %(tbName))
         return(temp.InstrumentID.values)
-
-
-    ############################################################################
-    ## 发送邮件通知
-    ############################################################################
-    def sendMail(self, content):
-        """发送邮件通知给：汉云交易员"""
-        # receiversMain = ['fl@hicloud-investment.com',
-        #                  'lhg@hicloud-investment.com']
-        # receiversOthers = ['jy@hicloud-investment.com']
-        receiversMain = ['fl@hicloud-investment.com']
-        receiversOthers = ['lhg@hicloud-investment.com']
-        sender = "trader" + '@hicloud.com'
-
-        # content = "testing from fl"
-        message = MIMEText(content.decode('string-escape').decode("utf-8"), 'plain', 'utf-8')
-        ## 显示:发件人
-        message['From'] = Header(sender, 'utf-8')
-        ## 显示:收件人
-        message['To']   =  Header('汉云交易员', 'utf-8')
-        ## 主题
-        subject = self.tradingDay + '：' + self.accountName + u'~~ 启禀大王，你家后院着火了 ~~'
-        message['Subject'] = Header(subject, 'utf-8')
-
-        ## ---------------------------------------------------------------------
-        try:
-            smtpObj = smtplib.SMTP('localhost')
-            smtpObj.sendmail(sender, receiversMain, message.as_string())
-            self.writeCtaLog(u'预警邮件发送成功')
-        except smtplib.SMTPException:
-            self.writeCtaLog(u'预警邮件发送失败')
-        ## ---------------------------------------------------------------------
