@@ -366,7 +366,7 @@ class CtaTemplate(object):
     ## william
     ## 从 MySQL 数据库获取交易订单
     ## =========================================================================
-    def fetchTradingOrders(self, stage):
+    def fetchTradingOrders(self, str stage):
         """ 从 MySQL 数据库获取交易订单 """
         ## ---------------------------------------------------------------------
         ##@param stage: 1.'open', 2.'close'
@@ -390,14 +390,15 @@ class CtaTemplate(object):
             int volume_0, volume_1, volume_2
             int totalVolume
             str tempKey
+            int i
 
         ## ---------------------------------------------------------------------
         for i in xrange(len(tempOrders)):
-            id = tempOrders.at[i,'InstrumentID']
+            id = tempOrders.at[i,'InstrumentID'].encode('ascii','ignore')
             tempKey = (id + '-' + tempOrders.at[i,'orderType']).encode('ascii','ignore')
             ##
             tradingOrdersX[tempKey] = {
-                'vtSymbol'      : tempOrders.at[i,'InstrumentID'].encode('ascii','ignore'),
+                'vtSymbol'      : id,
                 'direction'     : tempOrders.at[i,'orderType'].encode('ascii','ignore'),
                 'volume'        : tempOrders.at[i,'volume'],
                 'TradingDay'    : tempOrders.at[i,'TradingDay'],
@@ -438,7 +439,8 @@ class CtaTemplate(object):
                                                                  'status_u': None,
                                                                  'status_d': None}}
             ## -----------------------------------------------------------------
-            self.tickTimer[tempOrders.at[i,'InstrumentID']] = datetime.now()
+            # self.tickTimer[tempOrders.at[i,'InstrumentID']] = datetime.now()
+            self.tickTimer[id] = datetime.now()
         ## ---------------------------------------------------------------------
         return tradingOrdersX
 
@@ -489,7 +491,7 @@ class CtaTemplate(object):
         ## =====================================================================
 
 
-    def updateTradingOrdersVtOrderID(self, tradingOrders, stage):
+    def updateTradingOrdersVtOrderID(self, dict tradingOrders, str stage):
         """
         更新交易订单的 vtOrderID
         """
@@ -566,7 +568,7 @@ class CtaTemplate(object):
                                           set(tempVtOrderIDList))
         elif stage == 'close':
             self.vtOrderIDListClose = list(set(self.vtOrderIDListClose) |
-                                          set(tempVtOrderIDList))
+                                           set(tempVtOrderIDList))
 
     ############################################################################
     ## william
@@ -1025,8 +1027,9 @@ class CtaTemplate(object):
             self.tradingBetween = False
 
         ## ---------------------------------------------------------------------
-        if (h == self.tradingCloseHour and m == self.tradingCloseMinute2 and 
-           (s >= (59 - max(15, len(self.tradingOrdersClose))))):
+        if ( h == self.tradingCloseHour and 
+             m == self.tradingCloseMinute2 and 
+            (s > max(30, 59 - max(15, len(self.tradingOrdersClose)))) ):
             self.tradingEnd = True
         else:
             self.tradingEnd = False
