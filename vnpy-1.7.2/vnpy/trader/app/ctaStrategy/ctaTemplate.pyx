@@ -572,7 +572,7 @@ class CtaTemplate(object):
     ## william
     ## 限制价格在 UpperLimit 和 LowerLimit 之间
     ############################################################################
-    def priceBetweenUpperLower(self, price, vtSymbol):
+    def priceBetweenUpperLower(self, price, str vtSymbol):
         ## -----------------------------------------------------------
         cdef float tempPriceTick = self.ctaEngine.tickInfo[vtSymbol]['priceTick']
         ## -----------------------------------------------------------
@@ -1009,23 +1009,24 @@ class CtaTemplate(object):
         ## =====================================================================
         ## 启动尾盘交易
         ## =====================================================================
-        if ((h in [8,20] and m >= 59 and s >= 45) or 
-           ( ((21 <= h <= 24) or (0 <= h <= 2) or (9 <= h <= (self.tradingCloseHour-1))) and m <= 59 ) or 
-           (h == self.tradingCloseHour and m < self.tradingCloseMinute1)):
+        if ( (h in [8,20] and m >= 59 and s >= 45) or 
+             (h in [21,22,23,0,1,2]) or 
+             (9 <= h <= (self.tradingCloseHour-1)) or 
+             (h == self.tradingCloseHour and m < self.tradingCloseMinute1-10) ):
             self.tradingStart = True
         else:
             self.tradingStart = False
 
         ## ---------------------------------------------------------------------
         if (h == self.tradingCloseHour and 
-           (self.tradingCloseMinute1+1) <= m < (self.tradingCloseMinute2-1)):
+           (self.tradingCloseMinute1+1) <= m <= (self.tradingCloseMinute2-1)):
             self.tradingBetween = True
         else:
             self.tradingBetween = False
 
         ## ---------------------------------------------------------------------
         if (h == self.tradingCloseHour and m == self.tradingCloseMinute2 and 
-           (s >= (59 - max(10, len(self.tradingOrdersClose)*1.0)))):
+           (s >= (59 - max(15, len(self.tradingOrdersClose))))):
             self.tradingEnd = True
         else:
             self.tradingEnd = False
@@ -1034,10 +1035,13 @@ class CtaTemplate(object):
         ## =====================================================================
         ## 如果是开盘交易
         ## 则取消开盘交易的所有订单
-        if (h == self.tradingCloseHour and 
-            (self.tradingCloseMinute1 <= m <= self.tradingCloseMinute1 or
-             self.tradingCloseMinute2-1) <= m <= (self.tradingCloseMinute2-1) and 
-            s <= 30 and (s % 10 == 0)):
+        # if (h == self.tradingCloseHour and 
+        #     (self.tradingCloseMinute1 <= m <= self.tradingCloseMinute1 or
+        #      self.tradingCloseMinute2) <= m <= (self.tradingCloseMinute2-0) and 
+        #     s <= 10 and (s % 5 == 0)):
+        if ( (h == self.tradingCloseHour) and 
+             (m in [self.tradingCloseMinute1, self.tradingCloseMinute2]) and 
+            s <= 10 and (s % 5 == 0)):
             ## -----------------------------------------------------------------
             if (len(self.vtOrderIDListOpen) != 0 or 
                 len(self.vtOrderIDListClose) != 0 or 
@@ -1057,11 +1061,16 @@ class CtaTemplate(object):
 
         ## =====================================================================
         ## 生成收盘交易的订单
+        # if (h == self.tradingCloseHour and 
+        #     m in [self.tradingCloseMinute1, (self.tradingCloseMinute2-1)] and 
+        #     10 <= s <= 20 and 
+        #     self.ctaEngine.mainEngine.multiStrategy and 
+        #     (s == 19 or s % 5 == 0)):
         if (h == self.tradingCloseHour and 
-            m in [self.tradingCloseMinute1, (self.tradingCloseMinute2-1)] and 
-            20 <= s < 40 and 
+            m in [self.tradingCloseMinute1, (self.tradingCloseMinute2)] and 
+            10 <= s <= 20 and 
             self.ctaEngine.mainEngine.multiStrategy and 
-            (s == 29 or s % 10 == 0)):
+            (s == 19 or s % 5 == 0)):
             self.writeCtaLog('Rscript end_signal.R')
             subprocess.call(['Rscript',
                              os.path.join(self.ctaEngine.mainEngine.ROOT_PATH,
@@ -1075,9 +1084,24 @@ class CtaTemplate(object):
         ## 从 MySQL 数据库提取尾盘需要平仓的持仓信息
         ## postionInfoClose
         ## =====================================================================
-        if (h == self.tradingCloseHour and 
-            m in [self.tradingCloseMinute1, (self.tradingCloseMinute2-1)] and 
-            30 <= s <= 59 and (s % 10 == 0 or len(self.tradingOrdersClose) == 0)):
+        # if (h == self.tradingCloseHour and 
+        #     m in [self.tradingCloseMinute1, (self.tradingCloseMinute2-1)] and 
+        #     30 <= s <= 59 and (s % 10 == 0 or len(self.tradingOrdersClose) == 0)):
+        #     ## -----------------------------------------------------------------
+        #     try:
+        #         conn = vtFunction.dbMySQLConnect(self.ctaEngine.mainEngine.dataBase)
+        #         cursor = conn.cursor()
+        #         cursor.execute("""
+        #                         TRUNCATE TABLE workingInfo
+        #                        """)
+        #         conn.commit()
+        #         conn.close()
+        #     except:
+        #         self.writeCtaLog(u'workingInfo 清理数据 出错',
+        #                          logLevel = ERROR) 
+        if ( (h == self.tradingCloseHour and m == self.tradingCloseMinute1) or
+             (h == self.tradingCloseHour+1 and m <= 3 ) and 
+             (30 <= s <= 59 and s%10 == 0) ):
             ## -----------------------------------------------------------------
             try:
                 conn = vtFunction.dbMySQLConnect(self.ctaEngine.mainEngine.dataBase)
