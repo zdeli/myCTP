@@ -19,13 +19,13 @@ from vnpy.trader import vtFunction
 from logging import INFO, ERROR
 import talib
 import pandas as pd
-from tabulate import tabulate
+# from tabulate import tabulate
 from pandas.io import sql
 from datetime import *
 import time
-import math, random
+import math,random
 
-import re,ast,json
+import re,ast,json,ujson
 from copy import copy
 
 pd.set_option('display.max_rows', 1000)
@@ -380,7 +380,8 @@ class CtaTemplate(object):
             AND TradingDay = '%s'
             AND stage = '%s'
             """ %(self.strategyID, self.ctaEngine.tradingDate, stage))
-        tradingOrdersX = {}
+
+        cdef dict tradingOrdersX = {}
         ## ---------------------------------------------------------------------
         if len(tempOrders) == 0:
             return tradingOrdersX
@@ -391,7 +392,7 @@ class CtaTemplate(object):
             str tempKey
 
         ## ---------------------------------------------------------------------
-        for i in range(len(tempOrders)):
+        for i in xrange(len(tempOrders)):
             id = tempOrders.at[i,'InstrumentID']
             tempKey = (id + '-' + tempOrders.at[i,'orderType']).encode('ascii','ignore')
             ##
@@ -454,8 +455,12 @@ class CtaTemplate(object):
         ## =====================================================================
 
         self.tradingOrdersFailedInfo = {}
+
+        cdef:
+            str tempDirection
+
         ## =====================================================================
-        for i in range(len(failedInfo)):
+        for i in xrange(len(failedInfo)):
             ## -------------------------------------------------------------
             ## direction
             if failedInfo.loc[i,'direction'] == 'long':
@@ -488,6 +493,8 @@ class CtaTemplate(object):
         """
         更新交易订单的 vtOrderID
         """
+        if len(tradingOrders) == 0:
+            return
         ## =====================================================================
         ## MySQL 数据库保存的活跃订单
         mysqlWorkingInfo = vtFunction.dbMySQLQuery(self.ctaEngine.mainEngine.dataBase,
@@ -498,12 +505,16 @@ class CtaTemplate(object):
                             AND TradingDay = %s
                             AND stage = '%s'
                             """ %(self.strategyID, self.ctaEngine.tradingDay, stage))
-        if len(tradingOrders) == 0:
-            return
         ## 交易所保存的活跃订单
-        exchWorkingInfo = [self.ctaEngine.mainEngine.getAllWorkingOrders()[j].vtOrderID 
-                           for j in range(len(self.ctaEngine.mainEngine.getAllWorkingOrders()))]            
+        cdef list exchWorkingInfo = [self.ctaEngine.mainEngine.getAllWorkingOrders()[j].vtOrderID 
+                           for j in xrange(len(self.ctaEngine.mainEngine.getAllWorkingOrders()))]            
         ## =====================================================================
+        
+        cdef:
+            str key
+            str vtOrderID
+            list tempVtOrderIDList
+
         for key in tradingOrders.keys():
             temp = mysqlWorkingInfo.loc[(mysqlWorkingInfo.vtSymbol == tradingOrders[key]['vtSymbol']) & 
                                         (mysqlWorkingInfo.orderType == tradingOrders[key]['direction'])].reset_index(drop = True)
@@ -526,7 +537,7 @@ class CtaTemplate(object):
         ## =====================================================================
 
 
-    def updateVtOrderIDList(self, stage):
+    def updateVtOrderIDList(self, str stage):
         """
         更新 vtOrderIDList
         """
@@ -543,8 +554,11 @@ class CtaTemplate(object):
         if len(mysqlWorkingInfo) == 0:
             return
 
-        tempVtOrderIDList = []
-        for i in range(len(mysqlWorkingInfo)):
+        cdef:
+            list tempVtOrderIDList = []
+            int i
+
+        for i in xrange(len(mysqlWorkingInfo)):
             tempVtOrderIDList.extend(ast.literal_eval(mysqlWorkingInfo.at[i,'vtOrderIDList']))
         ## =====================================================================
         if stage == 'open':
@@ -558,7 +572,7 @@ class CtaTemplate(object):
     ## william
     ## 限制价格在 UpperLimit 和 LowerLimit 之间
     ############################################################################
-    def priceBetweenUpperLower(self, float price, vtSymbol):
+    def priceBetweenUpperLower(self, price, vtSymbol):
         ## -----------------------------------------------------------
         cdef float tempPriceTick = self.ctaEngine.tickInfo[vtSymbol]['priceTick']
         ## -----------------------------------------------------------
@@ -601,6 +615,9 @@ class CtaTemplate(object):
         else:
             tempFinishedOrders = []
 
+        cdef:
+            str i, vtOrderID
+
         for i in tempTradingList:
             ## -------------------------------------------------------------
             ## 如果交易量依然是大于 0 ，则需要继续发送订单命令
@@ -638,9 +655,9 @@ class CtaTemplate(object):
             if (self.tradingEnd and 
                 ((datetime.now() - self.tickTimer[vtSymbol]).seconds > 3) and 
                 len(tradingOrders[i]['vtOrderIDList'])):
-                tempWorkingOrders = allOrders.loc[allOrders.status.isin([u'未成交',u'部分成交'])][\
-                                                  allOrders.vtSymbol == vtSymbol][\
-                                                  allOrders.vtOrderID.isin(orderIDList)].vtOrderID.values
+                tempWorkingOrders = allOrders[(allOrders.status.isin([u'未成交',u'部分成交'])) &\
+                                              (allOrders.vtSymbol == vtSymbol) &\
+                                              (allOrders.vtOrderID.isin(orderIDList))].vtOrderID.values
                 if not tempWorkingOrders:
                     return
                 for vtOrderID in tradingOrders[i]['vtOrderIDList']:
@@ -675,12 +692,10 @@ class CtaTemplate(object):
             int deltaTick, deltaTick_quick, deltaTick_slow
             str status_quick, status_slow
             float remainingMinute
+            str i, l
         ## ---------------------------------------------------------------------
         allOrders = self.ctaEngine.mainEngine.getAllOrdersDataFrame()
         if len(allOrders):
-            # tempWorkingOrders  = allOrders.loc[allOrders.status.isin([u'未成交',u'部分成交'])][\
-            #                                    allOrders.vtSymbol == vtSymbol][\
-            #                                    allOrders.vtOrderID.isin(orderIDList)]
             tempWorkingOrders  = allOrders[(allOrders['vtSymbol'] == vtSymbol) & \
                                            (allOrders['status'].isin([u'未成交',u'部分成交'])) & \
                                            (allOrders['vtOrderID'].isin(orderIDList))]
@@ -709,13 +724,19 @@ class CtaTemplate(object):
                               sum([tradingOrders[i]['subOrders'][l]['volume'] for l in ['level1','level2']]) * 2
                 ## ---------------------------------------------------------------------------------
                 if len(allOrders):
-                    tempCanceledOrder  = allOrders.loc[allOrders.status.isin([u'已撤销'])][\
-                                                        allOrders.vtSymbol == vtSymbol][\
-                                                        allOrders.vtOrderID.isin(orderIDList)]
+                    # tempCanceledOrder  = allOrders.loc[allOrders.status.isin([u'已撤销'])][\
+                    #                                     allOrders.vtSymbol == vtSymbol][\
+                    #                                     allOrders.vtOrderID.isin(orderIDList)]
+                    tempCanceledOrder  = allOrders.loc[(allOrders.status.isin([u'已撤销'])) &\
+                                                       (allOrders.vtSymbol == vtSymbol) &\
+                                                       (allOrders.vtOrderID.isin(orderIDList))]
                     tempCanceledVolume = sum(tempCanceledOrder.totalVolume)
-                    tempFinishedOrders = allOrders.loc[allOrders.status.isin([u'全部成交'])][\
-                                                        allOrders.vtSymbol == vtSymbol][\
-                                                        allOrders.vtOrderID.isin(orderIDList)]
+                    # tempFinishedOrders = allOrders.loc[allOrders.status.isin([u'全部成交'])][\
+                    #                                     allOrders.vtSymbol == vtSymbol][\
+                    #                                     allOrders.vtOrderID.isin(orderIDList)]
+                    tempFinishedOrders = allOrders[(allOrders.status.isin([u'全部成交'])) &\
+                                                   (allOrders.vtSymbol == vtSymbol) &\
+                                                   (allOrders.vtOrderID.isin(orderIDList))]
                     tempFinishedVolume = sum(tempFinishedOrders.totalVolume)
                 else:
                     tempCanceledOrder  = []
@@ -751,15 +772,18 @@ class CtaTemplate(object):
                                           price         = price_0)
                     tradingOrders[i]['subOrders']['level0']['status'] = 'sended'
                     return
-                elif (any(x in tradingOrders[i]['vtOrderIDList'] for 
-                          x in tempCanceledOrder.vtOrderID.values)):
-                    self.sendTradingOrder(tradingOrders = tradingOrders,
-                                          orderDict     = tradingOrders[i],
-                                          orderIDList   = orderIDList,
-                                          priceType     = 'limit',
-                                          volume        = remainingVolume,
-                                          price         = price_0)
-                    return
+                elif (datetime.now().hour in [8,9,20,21] and 
+                      datetime.now().minute <= 10 and
+                      any(x in tradingOrders[i]['vtOrderIDList'] for 
+                          x in tempCanceledOrder.vtOrderID.values) and 
+                     ((datetime.now() - self.tickTimer[vtSymbol]).seconds > 3)):
+                        self.sendTradingOrder(tradingOrders = tradingOrders,
+                                              orderDict     = tradingOrders[i],
+                                              orderIDList   = orderIDList,
+                                              priceType     = 'limit',
+                                              volume        = remainingVolume,
+                                              price         = price_0)
+                        return
                 # ---------------------------------------------------------------------------------            
 
                 ## ---------------------------------------------------------------------------------
@@ -869,8 +893,11 @@ class CtaTemplate(object):
     ## @param addTick 控制增加的价格
     ############################################################################
     def sendTradingOrder(self, tradingOrders, orderDict, orderIDList, 
-                         priceType, price = None, 
-                         volume = None, addTick = 0, discount = 0):
+                         str priceType, 
+                         price = None, 
+                         volume = None, 
+                         int addTick = 0, 
+                         float discount = 0):
         """发送单个合约的订单"""
 
         ## ---------------------------------------------------------------------
@@ -975,9 +1002,10 @@ class CtaTemplate(object):
     ############################################################################
     def updateTradingStatus(self):
         """调整交易状态"""
-        h = datetime.now().hour
-        m = datetime.now().minute
-        s = datetime.now().second
+        cdef:
+            int h = datetime.now().hour
+            int m = datetime.now().minute
+            int s = datetime.now().second
         ## =====================================================================
         ## 启动尾盘交易
         ## =====================================================================
@@ -1084,9 +1112,10 @@ class CtaTemplate(object):
                                     AND stage = '%s'
                                     """ %(self.strategyID, self.ctaEngine.tradingDay, stage))
 
-        dfHeader = ['TradingDay','strategyID','vtSymbol','vtOrderIDList',
-                    'orderType','volume','stage']
-        dfData   = []
+        cdef:
+            list dfHeader = ['TradingDay','strategyID','vtSymbol','vtOrderIDList',
+                             'orderType','volume','stage']
+            list dfData   = []
 
         for k in tradingOrders.keys():
             temp = copy(tradingOrders[k])
@@ -1094,7 +1123,8 @@ class CtaTemplate(object):
                 continue
             temp['strategyID'] = self.strategyID
             temp['orderType'] = temp['direction']
-            temp['vtOrderIDList'] = json.dumps(temp['vtOrderIDList'])
+            # temp['vtOrderIDList'] = json.dumps(temp['vtOrderIDList'])
+            temp['vtOrderIDList'] = ujson.dumps(temp['vtOrderIDList'])
             temp['stage'] = stage
             dfData.append([temp[kk] for kk in dfHeader])
         df = pd.DataFrame(dfData, columns = dfHeader)
@@ -1143,6 +1173,10 @@ class CtaTemplate(object):
         # conn = vtFunction.dbMySQLConnect(self.ctaEngine.mainEngine.dataBase)
         # cursor = conn.cursor()
 
+        cdef:
+            str tempDirection
+            int tempVolume
+
         ## ---------------------------------------------------------------------
         if self.stratTrade['offset'] == u'开仓':
             if self.stratTrade['direction'] == 'long':
@@ -1173,7 +1207,7 @@ class CtaTemplate(object):
         conn = vtFunction.dbMySQLConnect(self.ctaEngine.mainEngine.dataBase)
         cursor = conn.cursor()
         
-        for i in range(len(mysqlInfoTradingOrders)):
+        for i in xrange(len(mysqlInfoTradingOrders)):
             tempVolume = mysqlInfoTradingOrders.at[i,'volume'] - self.stratTrade['volume']
             if tempVolume == 0:
                 cursor.execute("""
@@ -1425,8 +1459,8 @@ class CtaTemplate(object):
                                         (mysqlPositionInfo.TradingDay == stratTrade['TradingDay']) &\
                                         (mysqlPositionInfo.direction == stratTrade['direction'])]
         ## ---------------------------------------------------------------------
-        # conn   = vtFunction.dbMySQLConnect(self.ctaEngine.mainEngine.dataBase)
-        # cursor = conn.cursor()
+        cdef:
+            list tempFields
         ## ---------------------------------------------------------------------
         if len(tempPosInfo) == 0:
             ## 如果不在
@@ -1495,7 +1529,7 @@ class CtaTemplate(object):
         tempPosInfo = mysqlPositionInfo[(mysqlPositionInfo.InstrumentID == stratTrade['InstrumentID']) &\
                                         (mysqlPositionInfo.direction == tempDirectionPos)].sort_values(by='TradingDay', ascending = True)
         ## ---------------------------------------------------------------------------------
-        for i in range(len(tempPosInfo)):
+        for i in xrange(len(tempPosInfo)):
             tempResVolume = tempPosInfo.loc[tempPosInfo.index[i],'volume'] - stratTrade['volume']
             mysqlPositionInfo.at[tempPosInfo.index[i], 'volume'] = tempResVolume
             if tempResVolume >= 0:
@@ -1580,7 +1614,7 @@ class CtaTemplate(object):
     ############################################################################
     ## 保存数据 DataFrame 格式到 MySQL
     ############################################################################
-    def saveMySQL(self, df, tbl, over, sourceID = ''):
+    def saveMySQL(self, df, tbl, str over, str sourceID = ''):
         """
             保存 DataFrame 格式数据到 MySQL,
             @param
