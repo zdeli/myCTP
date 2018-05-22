@@ -144,8 +144,8 @@ class OIStrategy(CtaTemplate):
         ## =====================================================================
         ## 交易时点
         self.tradingCloseHour    = 14
-        self.tradingCloseMinute1 = 50
-        self.tradingCloseMinute2 = 59
+        self.tradingCloseMinute1 = 20
+        self.tradingCloseMinute2 = 29
         self.accountID = globalSetting.accountID
         if self.ctaEngine.mainEngine.initialCapital >= 1e7:
             self.randomNo = 15 + random.randint(-5,5)    ## 随机间隔多少秒再下单
@@ -198,7 +198,7 @@ class OIStrategy(CtaTemplate):
             AND TradingDay = '%s'
             """ %(self.strategyID, self.ctaEngine.tradingDate))
         if len(temp):
-            for i in range(len(temp)):
+            for i in xrange(len(temp)):
                 self.vtOrderIDListUpperLower.extend(ast.literal_eval(temp.ix[i,'vtOrderIDList']))
         ## =====================================================================
         
@@ -214,7 +214,7 @@ class OIStrategy(CtaTemplate):
             AND stage = 'ul'
             """ %(self.strategyID, self.ctaEngine.tradingDate))
         if len(tempCum):
-            for i in range(len(tempCum)):
+            for i in xrange(len(tempCum)):
                 ## -------------------------------------------------------------
                 self.vtOrderIDListUpperLowerTempCum.extend(
                     ast.literal_eval(tempCum.ix[i,'vtOrderIDList']))
@@ -243,7 +243,7 @@ class OIStrategy(CtaTemplate):
             AND stage = 'winner'
             """ %(self.strategyID, self.ctaEngine.tradingDate))
         if len(tempWinner):
-            for i in range(len(tempWinner)):
+            for i in xrange(len(tempWinner)):
                 self.vtOrderIDListTempWinner.extend(ast.literal_eval(tempWinner.ix[i,'vtOrderIDList']))
         
         ## =====================================================================
@@ -256,7 +256,7 @@ class OIStrategy(CtaTemplate):
             """ %(self.strategyID))
         
         if len(mysqlpositionInfo):
-            for i in range(len(mysqlpositionInfo)):
+            for i in xrange(len(mysqlpositionInfo)):
                 ## -------------------------------------------------
                 if mysqlpositionInfo.at[i, 'direction'] == 'long':
                     tempDirection = 'sell'
@@ -297,7 +297,7 @@ class OIStrategy(CtaTemplate):
                        where TradingDay = %s and strategyID = '%s'""" 
                        %(self.ctaEngine.lastTradingDay, self.strategyID))
         if len(tradingSignal):
-            for i in range(len(tradingSignal)):
+            for i in xrange(len(tradingSignal)):
                 k = tradingSignal.at[i, 'vtSymbol']
                 self.winnerParam[k] = dict(tradingSignal.iloc[i])
                 self.winnerParam[k]['param'] = float(self.winnerParam[k]['param'])
@@ -371,8 +371,8 @@ class OIStrategy(CtaTemplate):
     #---------------------------------------------------------------------------
     def onTick(self, tick):
         """收到行情TICK推送（必须由用户继承实现）"""
-        id = tick.vtSymbol
-
+        cdef str id = tick.vtSymbol
+        
         ## =====================================================================
         if not self.trading:
             return 
@@ -380,9 +380,14 @@ class OIStrategy(CtaTemplate):
             return
         elif self.accountID in self.WINNER_STRATEGY:
             self.bg.updateTick(tick)
-        elif ((datetime.now() - self.tickTimer[tick.vtSymbol]).seconds < 1):
-            return
+        # elif ((datetime.now() - self.tickTimer[tick.vtSymbol]).seconds < 1):
+        #     return
         ## =====================================================================
+
+        cdef:
+            int i
+            str x
+            list vtSymbolOpen
 
         ## =====================================================================
         if ((self.tradingStart and not self.tradingEnd) and 
@@ -406,7 +411,7 @@ class OIStrategy(CtaTemplate):
             vtSymbolOpen = [j for j in self.ctaEngine.lastTickDict.keys()
                                if j in [self.tradingOrdersOpen[k]['vtSymbol'] 
                                              for k in self.tradingOrdersOpen.keys()]]
-            for i in range(self.realOrderLevel):
+            for i in xrange(self.realOrderLevel):
                 for x in vtSymbolOpen:
                     self.prepareTradingOrderSplit(
                         vtSymbol      = x,
@@ -421,22 +426,20 @@ class OIStrategy(CtaTemplate):
             id in [self.tradingOrdersClose[k]['vtSymbol'] 
                              for k in self.tradingOrdersClose.keys()]):
             if self.tradingBetween:
-                tempAddTick   = self.closeAddTick
                 self.prepareTradingOrderSplit(
                     vtSymbol      = id,
                     tradingOrders = self.tradingOrdersClose,
                     orderIDList   = self.vtOrderIDListClose,
                     # priceType     = 'last',
                     priceType     = 'best',
-                    addTick       = tempAddTick)
+                    addTick       = self.closeAddTick)
             elif self.tradingEnd:
-                tempAddTick   = 1
                 self.prepareTradingOrder(
                     vtSymbol      = id,
                     tradingOrders = self.tradingOrdersClose,
                     orderIDList   = self.vtOrderIDListClose,
                     priceType     = 'chasing',
-                    addTick       = tempAddTick)
+                    addTick       = 1)
         ## =====================================================================
 
         # =====================================================================
@@ -496,7 +499,7 @@ class OIStrategy(CtaTemplate):
         # ## ---------------------------------
 
         ## =====================================================================
-        id = bar.vtSymbol
+        cdef str id = bar.vtSymbol
         
         if ( (not self.tradingStart) or 
              (id not in [self.tradingOrdersWinner[k]['vtSymbol'] 
@@ -530,9 +533,12 @@ class OIStrategy(CtaTemplate):
     #----------------------------------------------------------------------
     def onTrade(self, trade):
         """处理成交订单"""
-        self.tickTimer[trade.vtSymbol] = datetime.now()
         ## ---------------------------------------------------------------------
-
+        cdef:
+            str tempDirection
+            str tempKey
+            str tempPriceType
+            
         ## =====================================================================
         ## 0. 数据预处理
         ## =====================================================================
@@ -544,7 +550,7 @@ class OIStrategy(CtaTemplate):
 
         ## ---------------------------------------------------------------------
         if self.stratTrade['offset'] == u'开仓':
-            tempOffset = u'开仓'
+            tempOffset = u'开仓'.encode('UTF-8')
             if self.stratTrade['direction'] == u'多':
                 self.stratTrade['direction'] = 'long'
                 tempDirection = 'buy'
@@ -552,7 +558,7 @@ class OIStrategy(CtaTemplate):
                 self.stratTrade['direction'] = 'short'
                 tempDirection = 'short'
         elif self.stratTrade['offset'] in [u'平仓', u'平昨', u'平今']:
-            tempOffset = u'平仓'
+            tempOffset = u'平仓'.encode('UTF-8')
             if self.stratTrade['direction'] == u'多':
                 self.stratTrade['direction'] = 'long'
                 tempDirection = 'cover'
@@ -562,7 +568,8 @@ class OIStrategy(CtaTemplate):
         ## ---------------------------------------------------------------------
 
         ## ---------------------------------------------------------------------
-        tempKey = self.stratTrade['vtSymbol'] + '-' + tempDirection
+        # x = self.stratTrade['vtSymbol'] + '-' + tempDirection
+        tempKey = (self.stratTrade['vtSymbol'] + '-' + tempDirection).encode('ascii','ignore')
         ## ---------------------------------------------------------------------
 
         ########################################################################
@@ -636,7 +643,8 @@ class OIStrategy(CtaTemplate):
                     tempDirection = 'cover'
                     tempPriceType = 'lower'
                 ## -------------------------------------------------------------
-                tempKey = self.stratTrade['vtSymbol'] + '-' + tempDirection
+                # x = self.stratTrade['vtSymbol'] + '-' + tempDirection
+                tempKey = (self.stratTrade['vtSymbol'] + '-' + tempDirection).encode('ascii','ignore')
                 ## -------------------------------------------------------------
                 
                 if self.accountID not in self.WINNER_STRATEGY:
@@ -755,6 +763,7 @@ class OIStrategy(CtaTemplate):
 
         ## =====================================================================
         # 发出状态更新事件
+        self.tickTimer[trade.vtSymbol] = datetime.now()
         self.putEvent()
         ## =====================================================================
 
@@ -771,9 +780,10 @@ class OIStrategy(CtaTemplate):
         ## -----------------------
 
         ## -----------------------
-        h = datetime.now().hour
-        m = datetime.now().minute
-        s = datetime.now().second
+        cdef:
+            int h = datetime.now().hour
+            int m = datetime.now().minute
+            int s = datetime.now().second
         if (s % 5 != 0):
             return
         ## -----------------------
@@ -792,9 +802,12 @@ class OIStrategy(CtaTemplate):
         ## -----------------------
 
 
+        # if (h == self.tradingCloseHour and 
+        #     m in [self.tradingCloseMinute1, (self.tradingCloseMinute2-1)] and 
+        #     30 <= s <= 59 and (s % 10 == 0 or len(self.tradingOrdersClose) == 0)):
         if (h == self.tradingCloseHour and 
-            m in [self.tradingCloseMinute1, (self.tradingCloseMinute2-1)] and 
-            30 <= s <= 59 and (s % 10 == 0 or len(self.tradingOrdersClose) == 0)):
+            m in [self.tradingCloseMinute1, (self.tradingCloseMinute2)] and 
+            20 <= s <= 30 and (s % 5 == 0 or len(self.tradingOrdersClose) == 0)):
             ## =================================================================
             if self.ctaEngine.mainEngine.multiStrategy:
                 self.tradingOrdersClose = self.fetchTradingOrders(stage = 'close')
