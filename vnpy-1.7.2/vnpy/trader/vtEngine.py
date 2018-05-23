@@ -956,6 +956,11 @@ class DataEngine(object):
 class LogEngine(object):
     """日志引擎"""
 
+    ## -------------------------------------------------------------------------
+    # 单例模式
+    __metaclass__ = VtSingleton
+    ## -------------------------------------------------------------------------
+
     # 日志级别
     LEVEL_DEBUG = logging.DEBUG
     LEVEL_INFO = logging.INFO
@@ -963,15 +968,17 @@ class LogEngine(object):
     LEVEL_ERROR = logging.ERROR
     LEVEL_CRITICAL = logging.CRITICAL
 
-    # 单例对象
-    instance = None
+    ## -------------------------------------------------------------------------
+    # # 单例对象
+    # instance = None
 
-    #----------------------------------------------------------------------
-    def __new__(cls, *args, **kwargs):
-        """创建对象，保证单例"""
-        if not cls.instance:
-            cls.instance = super(LogEngine, cls).__new__(cls, *args, **kwargs)
-        return cls.instance
+    # #----------------------------------------------------------------------
+    # def __new__(cls, *args, **kwargs):
+    #     """创建对象，保证单例"""
+    #     if not cls.instance:
+    #         cls.instance = super(LogEngine, cls).__new__(cls, *args, **kwargs)
+    #     return cls.instance
+    ## -------------------------------------------------------------------------
 
     #----------------------------------------------------------------------
     def __init__(self):
@@ -1019,9 +1026,7 @@ class LogEngine(object):
         """添加文件输出"""
         if not self.fileHandler:
             if not filename:
-                # filename = 'vt_' + datetime.now().strftime('%Y%m%d') + '.log'
                 filename = vtFunction.tradingDay() + "_" + globalSetting.accountID + '.log'
-            # filepath = vtFunction.getTempPath(filename)
             filepath = vtFunction.getLogPath(filename)
             self.fileHandler = logging.FileHandler(filepath)
             self.fileHandler.setLevel(self.level)
