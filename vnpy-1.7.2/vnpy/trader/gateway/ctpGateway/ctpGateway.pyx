@@ -7,22 +7,22 @@ vn.ctp的gateway接入
 vtSymbol直接使用symbol
 '''
 
-import os,sys
-import io
-import json,shelve,math
+import os,sys,io
+import shelve,math
+import json
+import ujson
 import pandas as pd
 from copy import copy
 from datetime import datetime, timedelta
 from logging import *
 
 from vnpy.api.ctp import MdApi, TdApi, defineDict
-from vnpy.trader.vtGateway import *
 from vnpy.trader import vtFunction 
-from vnpy.trader.vtConstant import GATEWAYTYPE_FUTURES
+from vnpy.trader.vtConstant import *
 from .language import text
 from vnpy.trader.vtGlobal import globalSetting
 
-import ciso8601
+# import ciso8601
 
 # 以下为一些VT类型和CTP类型的映射字典
 # 价格类型映射
@@ -87,22 +87,135 @@ cdef dict symbolExchangeDict = {}
 # 夜盘交易时间段分隔判断
 NIGHT_TRADING = datetime(1900, 1, 1, 20).time()
 
-########################################################################
-class CtpGateway(VtGateway):
-    """CTP接口"""
 
-    ## 最后一个数据
-    lastTickDict = {}
-    ## 仓位信息
-    posInfoDict  = {}
-    initialCapital = 0
-    flowCapital = 0
+from vnpy.event import *
+from vnpy.trader.vtEvent import *
+from vnpy.trader.vtObject import *
+
+
+########################################################################
+cdef class VtGateway(object):
+    """交易接口"""
+
+    cdef dict __dict__
 
     #----------------------------------------------------------------------
-    def __init__(self, eventEngine, gatewayName='CTP'):
+    def __cinit__(self, eventEngine, gatewayName):
+        """Constructor"""
+        self.eventEngine = eventEngine
+        self.gatewayName = gatewayName
+        
+    #----------------------------------------------------------------------
+    cpdef onTick(self, tick):
+        """市场行情推送"""
+        # 通用事件
+        event1 = Event(type_=EVENT_TICK)
+        event1.dict_['data'] = tick
+        self.eventEngine.put(event1)
+        
+        # 特定合约代码的事件
+        event2 = Event(type_=EVENT_TICK+tick.vtSymbol)
+        event2.dict_['data'] = tick
+        self.eventEngine.put(event2)
+    
+    #----------------------------------------------------------------------
+    cpdef onTrade(self, trade):
+        """成交信息推送"""
+        # 通用事件
+        event1 = Event(type_=EVENT_TRADE)
+        event1.dict_['data'] = trade
+        self.eventEngine.put(event1)
+        
+        # 特定合约的成交事件
+        event2 = Event(type_=EVENT_TRADE+trade.vtSymbol)
+        event2.dict_['data'] = trade
+        self.eventEngine.put(event2)        
+    
+    #----------------------------------------------------------------------
+    cpdef onOrder(self, order):
+        """订单变化推送"""
+        # 通用事件
+        event1 = Event(type_=EVENT_ORDER)
+        event1.dict_['data'] = order
+        self.eventEngine.put(event1)
+        
+        # 特定订单编号的事件
+        event2 = Event(type_=EVENT_ORDER+order.vtOrderID)
+        event2.dict_['data'] = order
+        self.eventEngine.put(event2)
+    
+    #----------------------------------------------------------------------
+    cpdef onPosition(self, position):
+        """持仓信息推送"""
+        # 通用事件
+        event1 = Event(type_=EVENT_POSITION)
+        event1.dict_['data'] = position
+        self.eventEngine.put(event1)
+        
+        # 特定合约代码的事件
+        event2 = Event(type_=EVENT_POSITION+position.vtSymbol)
+        event2.dict_['data'] = position
+        self.eventEngine.put(event2)
+    
+    #----------------------------------------------------------------------
+    cpdef onAccount(self, account):
+        """账户信息推送"""
+        # 通用事件
+        event1 = Event(type_=EVENT_ACCOUNT)
+        event1.dict_['data'] = account
+        self.eventEngine.put(event1)
+        
+        # 特定合约代码的事件
+        event2 = Event(type_=EVENT_ACCOUNT+account.vtAccountID)
+        event2.dict_['data'] = account
+        self.eventEngine.put(event2)
+    
+    #----------------------------------------------------------------------
+    cpdef onError(self, error):
+        """错误信息推送"""
+        # 通用事件
+        event1 = Event(type_=EVENT_ERROR)
+        event1.dict_['data'] = error
+        self.eventEngine.put(event1)    
+        
+    #----------------------------------------------------------------------
+    cpdef onLog(self, log):
+        """日志推送"""
+        # 通用事件
+        event1 = Event(type_=EVENT_LOG)
+        event1.dict_['data'] = log
+        self.eventEngine.put(event1)
+        
+    #----------------------------------------------------------------------
+    cpdef onContract(self, contract):
+        """合约基础信息推送"""
+        # 通用事件
+        event1 = Event(type_=EVENT_CONTRACT)
+        event1.dict_['data'] = contract
+        self.eventEngine.put(event1)        
+
+
+########################################################################
+cdef class CtpGateway(VtGateway):
+    """CTP接口"""
+
+    cdef object VtGateway
+    cdef public:
+        dict lastTickDict, posInfoDict
+        bint mdConnected, tdConnected, qryEnabled
+        int qryCount, qryNextFunction, qryTrigger
+        list qryFunctionList
+
+    #----------------------------------------------------------------------
+    def __cinit__(self, eventEngine, gatewayName='CTP'):
         """Constructor"""
         super(CtpGateway, self).__init__(eventEngine, gatewayName)
         
+        ## 最后一个数据
+        self.lastTickDict = {}
+        ## 仓位信息
+        self.posInfoDict = {}
+
         self.mdApi = CtpMdApi(self)     # 行情API
         self.tdApi = CtpTdApi(self)     # 交易API
         
@@ -121,7 +234,7 @@ class CtpGateway(VtGateway):
 
         
     #----------------------------------------------------------------------
-    def connect(self, accountID):
+    cpdef connect(self, str accountID):
         """连接"""
         try:
             f = file(self.CTPConnectPath)
@@ -196,12 +309,12 @@ class CtpGateway(VtGateway):
             if 'authCode' in setting: 
                 authCode = str(setting['authCode'])
                 # userProductInfo = str(setting['userProductInfo'])
-                userProductInfo = u'CTP'
+                userProductInfo = 'CTP'
                 self.tdApi.requireAuthentication = True
             else:
                 authCode = None
                 # userProductInfo = None
-                userProductInfo = u'CTP'
+                userProductInfo = 'CTP'
         except KeyError:
             log = VtLogData()
             log.gatewayName = self.gatewayName
@@ -229,32 +342,32 @@ class CtpGateway(VtGateway):
         self.initQuery()
     
     #----------------------------------------------------------------------
-    def subscribe(self, subscribeReq):
+    cpdef subscribe(self, subscribeReq):
         """订阅行情"""
         self.mdApi.subscribe(subscribeReq)
         
     #----------------------------------------------------------------------
-    def sendOrder(self, orderReq):
+    cpdef sendOrder(self, orderReq):
         """发单"""
         return self.tdApi.sendOrder(orderReq)
         
     #----------------------------------------------------------------------
-    def cancelOrder(self, cancelOrderReq):
+    cpdef cancelOrder(self, cancelOrderReq):
         """撤单"""
         self.tdApi.cancelOrder(cancelOrderReq)
         
     #----------------------------------------------------------------------
-    def qryAccount(self):
+    cpdef qryAccount(self):
         """查询账户资金"""
         self.tdApi.qryAccount()
         
     #----------------------------------------------------------------------
-    def qryPosition(self):
+    cpdef qryPosition(self):
         """查询持仓"""
         self.tdApi.qryPosition()
         
     #----------------------------------------------------------------------
-    def close(self):
+    cpdef close(self):
         """关闭"""
         if self.mdConnected:
             self.mdApi.close()
@@ -262,7 +375,7 @@ class CtpGateway(VtGateway):
             self.tdApi.close()
         
     #----------------------------------------------------------------------
-    def initQuery(self):
+    cpdef initQuery(self):
         """初始化连续查询"""
         if self.qryEnabled:
             # 需要循环的查询函数列表
@@ -275,7 +388,7 @@ class CtpGateway(VtGateway):
             self.startQuery()
     
     #----------------------------------------------------------------------
-    def query(self, event):
+    cpdef query(self, event):
         """注册到事件处理引擎上的查询函数"""
         self.qryCount += 1
         
@@ -293,12 +406,12 @@ class CtpGateway(VtGateway):
                 self.qryNextFunction = 0
     
     #----------------------------------------------------------------------
-    def startQuery(self):
+    cpdef startQuery(self):
         """启动连续查询"""
         self.eventEngine.register(EVENT_TIMER, self.query)
     
     #----------------------------------------------------------------------
-    def setQryEnabled(self, qryEnabled):
+    cpdef setQryEnabled(self, qryEnabled):
         """设置是否要启动循环查询"""
         self.qryEnabled = qryEnabled
 
@@ -326,25 +439,30 @@ class CtpMdApi(MdApi):
         self.password = EMPTY_STRING            # 密码
         self.brokerID = EMPTY_STRING            # 经纪商代码
         self.address  = EMPTY_STRING            # 服务器地址
-        # self.lastTickDict     = {}
-        self.lastTickFileds    = ['vtSymbol', 'lastPrice',
-                                  'openPrice', 'highestPrice', 'lowestPrice',
-                                  'bidPrice1', 'askPrice1',
-                                  'bidVolume1', 'askVolume1',
-                                  'upperLimit','lowerLimit']
+
+        self.lastTickFileds = [
+            "vtSymbol", "lastPrice",
+            "openPrice", "highestPrice", "lowestPrice",
+            "bidPrice1", "askPrice1",
+            "bidVolume1", "askVolume1",
+            "upperLimit","lowerLimit"]
+
         self.tradingDt = None               # 交易日datetime对象
-        self.tradingDate = vtFunction.tradingDay()
+        self.tradingDate = vtFunction.tradingDate()
         self.tradingDay = vtFunction.tradingDay()      # 交易日期
+        self.lastTradingDate = vtFunction.lastTradingDate()
+        self.lastTradingDay = vtFunction.lastTradingDay()
         self.tickTime = None                # 最新行情time对象
-        self.tempFields = ['openPrice','highestPrice','lowestPrice','closePrice',
-                          'upperLimit','lowerLimit','openInterest',
-                          'bidPrice1','bidVolume1',
-                          'askPrice1','askVolume1']
-        self.recorderFields = ['openPrice','highestPrice','lowestPrice','closePrice',
-                          'upperLimit','lowerLimit','openInterest','preDelta','currDelta',
-                          'bidPrice1','bidPrice2','bidPrice3','bidPrice4','bidPrice5',
-                          'askPrice1','askPrice2','askPrice3','askPrice4','askPrice5',
-                          'settlementPrice','averagePrice']
+
+        self.recorderFields = [
+            "lastPrice",
+            "openPrice","highestPrice","lowestPrice","closePrice",
+            "upperLimit","lowerLimit",
+            "preClosePrice","preOpenInterest","openInterest",
+            "preDelta","currDelta",
+            "bidPrice1","bidPrice2","bidPrice3","bidPrice4","bidPrice5",
+            "askPrice1","askPrice2","askPrice3","askPrice4","askPrice5",
+            "preSettlementPrice","settlementPrice","averagePrice"]
 
     #----------------------------------------------------------------------
     def onFrontConnected(self):
@@ -430,7 +548,7 @@ class CtpMdApi(MdApi):
             data['Volume'] <= 0):
             return
         # 过滤尚未获取合约交易所时的行情推送
-        symbol = data['InstrumentID']
+        cdef char* symbol = data['InstrumentID']
         if symbol not in symbolExchangeDict:
             return
         ## ---------------------------------------------------------------------
@@ -439,32 +557,33 @@ class CtpMdApi(MdApi):
         tick = VtTickData()
         tick.gatewayName = self.gatewayName
         tick.symbol = symbol
-        tick.exchange = symbolExchangeDict[tick.symbol]
-        tick.vtSymbol = tick.symbol      #'.'.join([tick.symbol, tick.exchange])
+        tick.exchange = symbolExchangeDict[symbol]
+        tick.vtSymbol = symbol      #'.'.join([tick.symbol, tick.exchange])
         
         # tick.timeStamp  = datetime.now().strftime('%Y%m%d %H:%M:%S.%f')
         # 上期所和郑商所可以直接使用，大商所需要转换
         ##################################### tick.date = data['ActionDay']
         tick.date = self.tradingDate
-        tick.time = '.'.join([data['UpdateTime'], str(data['UpdateMillisec']/100)])
+        # tick.time = '.'.join([data['UpdateTime'], str(data['UpdateMillisec']/100)])
+        tick.time = '.'.join([data['UpdateTime'], str(data['UpdateMillisec'])])
         tick.datetime = datetime.strptime(' '.join([tick.date, tick.time]),
                                               '%Y%m%d %H:%M:%S.%f')  
 
         ## 价格信息
         tick.lastPrice          = round(data['LastPrice'],5)
         # tick.preSettlementPrice = data['PreSettlementPrice']
-        tick.preClosePrice      = round(data['PreClosePrice'],5)
+        tick.preClosePrice      = data['PreClosePrice']
         tick.openPrice          = round(data['OpenPrice'],5)
-        tick.highestPrice       = round(data['HighestPrice'],5)
-        tick.lowestPrice        = round(data['LowestPrice'],5)
-        tick.closePrice         = round(data['ClosePrice'],5)
+        tick.highestPrice       = data['HighestPrice']
+        tick.lowestPrice        = data['LowestPrice']
+        tick.closePrice         = data['ClosePrice']
 
         tick.upperLimit         = round(data['UpperLimitPrice'],5)
         tick.lowerLimit         = round(data['LowerLimitPrice'],5)
 
         ## 成交量, 成交额
-        tick.volume   = round(data['Volume'],5)
-        tick.turnover = round(data['Turnover'],5)
+        tick.volume   = data['Volume']
+        tick.turnover = data['Turnover']
 
         ## 持仓数据
         # tick.preOpenInterest    = data['PreOpenInterest']
@@ -495,7 +614,7 @@ class CtpMdApi(MdApi):
 
         # tick.bidPrice4  = data['BidPrice4']
         # tick.bidVolume4 = data['BidVolume4']
-        # tick.AskPrice4  = data['AskPrice4']
+        # tick.askPrice4  = data['AskPrice4']
         # tick.askVolume4 = data['AskVolume4']
 
         # tick.bidPrice5  = data['BidPrice5']
@@ -522,21 +641,22 @@ class CtpMdApi(MdApi):
         #     tick.date = self.tradingDate    # 使用本地维护的日期
         #     self.tickTime = newTime         # 更新上一个tick时间
         ## -------------------------------
-        # for i in self.tempFields:
-        #     if tick.__dict__[i] > 1.7e+100:
-        #         tick.__dict__[i] = 0
+        # cdef char* k
         ## -------------------------------
-        # for i in self.recorderFields:
-        #     if tick.__dict__[i] > 1.7e+100:
-        #         tick.__dict__[i] = 0
+        # for k in self.recorderFields:
+        #     if tick.__dict__[k] > 1.7e+100:
+        #         tick.__dict__[k] = 0
+        #     else:
+        #         tick.__dict__[k] = round(tick.__dict__[k], 5)
         # ## -------------------------------
         ## ---------------------------------------------------------------------
+        # print tick.__dict__
         self.gateway.onTick(tick)
         ## ---------------------------------------------------------------------
         ########################################################################
         ## william
         ## tick 数据返回到 /vn.trader/vtEngine.onTick()
-        self.gateway.lastTickDict[tick.vtSymbol] = {k:tick.__dict__[k] for k in self.lastTickFileds}
+        self.gateway.lastTickDict[symbol] = {k:tick.__dict__[k] for k in self.lastTickFileds}
 
     #---------------------------------------------------------------------- 
     def onRspSubForQuoteRsp(self, data, error, n, last):
@@ -554,7 +674,7 @@ class CtpMdApi(MdApi):
         pass        
         
     #----------------------------------------------------------------------
-    def connect(self, userID, password, brokerID, address):
+    def connect(self, str userID, str password, str brokerID, str address):
         """初始化连接"""
         self.userID   = userID                # 账号
         self.password = password              # 密码
@@ -591,8 +711,8 @@ class CtpMdApi(MdApi):
     def login(self):
         """登录"""
         # 如果填入了用户名密码等，则登录
+        cdef dict req = {}
         if self.userID and self.password and self.brokerID:
-            req = {}
             req['UserID']   = self.userID
             req['Password'] = self.password
             req['BrokerID'] = self.brokerID
@@ -614,7 +734,7 @@ class CtpMdApi(MdApi):
         self.gateway.onLog(log)     
 
     #---------------------------------------------------------------------------
-    def writeError(self, errorID, errorMsg):
+    def writeError(self, str errorID, errorMsg):
         """发出错误"""
         err = VtErrorData()
         err.gatewayName = self.gatewayName
@@ -680,21 +800,77 @@ class CtpTdApi(TdApi):
         ## ---------------------------------------------------------------------
 
         ## ---------------------------------------------------------------------
-        self.preShares = vtFunction.dbMySQLQuery(
+        # self.preShares = vtFunction.dbMySQLQuery(
+        #                 globalSetting.accountID,
+        #                 """
+        #                 select *
+        #                 from funding
+        #                 where TradingDay < '%s'
+        #                 """ % self.tradingDay).shares.sum()
+
+        # self.navInfo = vtFunction.dbMySQLQuery(
+        #                 globalSetting.accountID,
+        #                 """
+        #                 select *
+        #                 from nav
+        #                 where TradingDay = '%s'
+        #                 """ % self.lastTradingDay)
+        # self.feeInfo = vtFunction.dbMySQLQuery(
+        #                 globalSetting.accountID,
+        #                 """
+        #                 select *
+        #                 from fee
+        #                 """)
+
+        # if len(self.feeInfo):
+        #     self.feePre = self.feeInfo.loc[self.feeInfo.TradingDay < self.tradingDate].Amount.sum()
+        #     self.feeToday = self.feeInfo.loc[self.feeInfo.TradingDay == self.tradingDate].Amount.sum()
+        # else:
+        #     self.feePre = 0
+        #     self.feeToday = 0
+
+        # self.feeAll = self.feePre + self.feeToday
+        
+        ## 上一个交易日的净值
+        self.preNav_account = vtFunction.dbMySQLQuery(
+                        globalSetting.accountID,
+                        """
+                        select *
+                        from accountInfo
+                        where TradingDay < '%s'
+                        order by -TradingDay limit 1
+                        """ % self.tradingDay)
+        self.preNav_nav = vtFunction.dbMySQLQuery(
+                        globalSetting.accountID,
+                        """
+                        select *
+                        from nav
+                        where TradingDay < '%s'
+                        order by -TradingDay limit 1
+                        """ % self.tradingDay)
+
+        if len(self.preNav_nav) == 0:
+            if len(self.preNav_account) == 0:
+                self.preNav = 1.0
+            else:
+                self.preNav = round(self.preNav_account.loc[0,'nav'], 5)
+        else:
+            self.preNav = round(self.preNav_nav.loc[0,'NAV'], 5)
+
+        ## 截至到上一个交易日的总共基金份额
+        self.totalShares = vtFunction.dbMySQLQuery(
                         globalSetting.accountID,
                         """
                         select *
                         from funding
                         where TradingDay < '%s'
-                        """ % self.tradingDay).shares.sum()
+                        """ % self.tradingDay)
+        if len(self.totalShares) == 0:
+            self.totalShares = 0
+        else:
+            self.totalShares  = self.totalShares.shares.sum()
 
-        self.navInfo = vtFunction.dbMySQLQuery(
-                        globalSetting.accountID,
-                        """
-                        select *
-                        from nav
-                        where TradingDay = '%s'
-                        """ % self.lastTradingDay)
+        ## 从期货账户扣费的汇总统计
         self.feeInfo = vtFunction.dbMySQLQuery(
                         globalSetting.accountID,
                         """
@@ -702,14 +878,23 @@ class CtpTdApi(TdApi):
                         from fee
                         """)
 
-        if len(self.feeInfo):
-            self.feePre = self.feeInfo.loc[self.feeInfo.TradingDay < self.tradingDate].Amount.sum()
-            self.feeToday = self.feeInfo.loc[self.feeInfo.TradingDay == self.tradingDate].Amount.sum()
-        else:
+        if len(self.feeInfo) == 0:
             self.feePre = 0
             self.feeToday = 0
+        else:
+            self.feePre = self.feeInfo.loc[self.feeInfo.TradingDay < self.tradingDate].Amount.sum()
+            self.feeToday = self.feeInfo.loc[self.feeInfo.TradingDay == self.tradingDate].Amount.sum()
 
         self.feeAll = self.feePre + self.feeToday
+
+        ## 如果有爬虫，则有 navInfo, 如 YunYang1
+        self.navInfo = vtFunction.dbMySQLQuery(
+                        globalSetting.accountID,
+                        """
+                        select *
+                        from nav
+                        where TradingDay = '%s'
+                        """ % self.lastTradingDay)
         ## ---------------------------------------------------------------------
 
     #----------------------------------------------------------------------
@@ -925,6 +1110,7 @@ class CtpTdApi(TdApi):
     #----------------------------------------------------------------------
     def onRspQryInvestorPosition(self, data, error, n, last):
         """持仓查询回报"""
+
         if not data['InstrumentID']:
             return
         
@@ -994,6 +1180,95 @@ class CtpTdApi(TdApi):
     def onRspQryTradingAccount(self, data, error, n, last):
         """资金账户查询回报"""
 
+        # ## ---------------------------------------------------------------------
+        # ## 不要那么频繁的更新数据
+        # if (datetime.now() - self.timer['account']).seconds <= 15:
+        #     return
+        # self.timer['account'] = datetime.now()
+        # ## ---------------------------------------------------------------------
+
+        # """
+        # onRspQryTradingAccount 获得的　data 可以参考:
+        # vnpy/api/ctp/py3/pyscript/ctp_struct.py
+        # #资金账户
+        # CThostFtdcTradingAccountField = {}
+        # """
+        # account = VtAccountData()
+        # account.gatewayName = self.gatewayName
+
+        # # 账户代码
+        
+        # # account.TradingDay = self.tradingDay
+        # # account.updateTime  = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
+        # account.accountID = '.'.join([self.gatewayName, data['AccountID']])
+        # account.accountName = globalSetting.accountName
+        # # account.vtAccountID = '.'.join([self.gatewayName, account.accountID])
+
+        # account.preBalance = round(data['PreBalance'],2)
+        # account.balance = round(data['PreBalance'] - data['PreCredit'] - data['PreMortgage'] +
+        #                    data['Mortgage'] - data['Withdraw'] + data['Deposit'] +
+        #                    data['CloseProfit'] + data['PositionProfit'] + data['CashIn'] -
+        #                    data['Commission'],2)
+        # account.available = round(data['Available'],2)
+
+        # account.value = sum(
+        #                    [self.gateway.posInfoDict[k]['position'] * self.gateway.posInfoDict[k]['price'] * self.gateway.posInfoDict[k]['size'] for k in self.gateway.posInfoDict.keys()]
+        #                     )
+
+        # if self.gateway.initialCapital:
+        #     account.leverage   = round(account.value / self.gateway.initialCapital,2)
+
+        # account.commission     = round(data['Commission'],2)
+        # account.margin         = round(data['CurrMargin'],2)
+        # account.closeProfit    = round(data['CloseProfit'],2)
+        # account.positionProfit = round(data['PositionProfit'],2)
+        # account.profit         = account.closeProfit + account.positionProfit
+        # account.deposit        = round(data['Deposit'],2)
+        # account.withdraw       = round(data['Withdraw'],2)
+
+        # ## ----------------------------------------------
+        # # if (globalSetting.accountID in ['YongAnLYB', 'ShenWanYYX'] and 
+        # #     not ( (datetime.now().hour == 14 and datetime.now().minute > 50) or 
+        # #           (datetime.now().hour == 15 and datetime.now().minute <= 15) ) ):
+        # #     account.closeProfit = 0
+        # ## ----------------------------------------------
+
+        # if len(self.navInfo):
+        #     account.preNav = self.navInfo.NAV.values[0]
+        #     account.flowCapital = self.navInfo.Currency.values[0]
+        #     account.banking = self.navInfo.Bank.values[0]
+        # else:
+        #     if (account.preBalance == 0):
+        #         account.preNav = 1
+        #     else:
+        #         account.preNav = (account.preBalance + self.gateway.flowCapital) / self.preShares
+        #     account.flowCapital = self.gateway.flowCapital
+        #     account.banking = 0
+
+        # ## 当日出入金换算份额
+        # cdef int fundingShares = int(math.floor((account.deposit - account.withdraw) / account.preNav))
+
+        # ## 当日从期货账户扣费情况
+        # ## 需要手动核对
+        # account.fee = self.feeToday
+
+        # ## 当日总资产
+        # account.asset = account.balance + account.flowCapital
+        # ## ---------------------------------------------------------------------
+        # if account.asset:
+        #     account.marginPct = round(account.margin / account.asset,4) * 100
+        #     ##　当日总份额
+        #     account.shares = self.preShares + fundingShares
+        #     ## 当日净值
+        #     account.nav = round((account.asset + self.feeAll + account.banking) / account.shares,4)
+        #     ## 当日收益波动
+        #     account.chgpct = round(account.nav / account.preNav - 1, 4) * 100
+        #     ## 合约价值转化
+        #     account.value = format(account.value, ',')
+        # ## ---------------------------------------------------------------------
+        
+
         ## ---------------------------------------------------------------------
         ## 不要那么频繁的更新数据
         if (datetime.now() - self.timer['account']).seconds <= 15:
@@ -1014,7 +1289,6 @@ class CtpTdApi(TdApi):
         
         # account.TradingDay = self.tradingDay
         # account.updateTime  = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        
         account.accountID = '.'.join([self.gatewayName, data['AccountID']])
         account.accountName = globalSetting.accountName
         # account.vtAccountID = '.'.join([self.gatewayName, account.accountID])
@@ -1040,25 +1314,40 @@ class CtpTdApi(TdApi):
         account.profit         = account.closeProfit + account.positionProfit
         account.deposit        = round(data['Deposit'],2)
         account.withdraw       = round(data['Withdraw'],2)
+        account.netIncome      = account.deposit - account.withdraw
 
-        if len(self.navInfo):
-            account.preNav = self.navInfo.NAV.values[0]
-            account.flowCapital = self.navInfo.Currency.values[0]
-            account.banking = self.navInfo.Bank.values[0]
-        else:
-            if (account.preBalance == 0):
-                account.preNav = 1
-            else:
-                account.preNav = (account.preBalance + self.gateway.flowCapital) / self.preShares
-            account.flowCapital = self.gateway.flowCapital
-            account.banking = 0
+        ## ----------------------------------------------
+        # if (globalSetting.accountID in ['YongAnLYB', 'ShenWanYYX'] and 
+        #     not ( (datetime.now().hour == 14 and datetime.now().minute > 50) or 
+        #           (datetime.now().hour == 15 and datetime.now().minute <= 15) ) ):
+        #     account.closeProfit = 0
+        ## ----------------------------------------------
 
         ## 当日出入金换算份额
-        fundingShares = int(math.floor((account.deposit - account.withdraw) / account.preNav))
+        cdef int fundingShares = int(account.netIncome / self.preNav)
+        if fundingShares != 0:
+            ## 
+            dfHeader = ['TradingDay','capital','price','shares','investor']
+            dfData = [self.tradingDay, account.netIncome, self.preNav, fundingShares, '']
+            df = pd.DataFrame([dfData], columns = dfHeader)
+            vtFunction.dbMySQLSend(dbName = globalSetting.accountID, 
+                                   query = """delete from funding
+                                              where TradingDay = '%s'""" % self.tradingDay)
+            vtFunction.saveMySQL(df = df, db = globalSetting.accountID, tbl = 'funding',
+                      over = 'append', sourceID = 'ctpGateway')
+        ## 
+        totalShares = self.totalShares + fundingShares
 
         ## 当日从期货账户扣费情况
         ## 需要手动核对
         account.fee = self.feeToday
+
+        if len(self.navInfo) == 0:
+            account.banking = 0
+            account.flowCapital = self.gateway.flowCapital
+        else:
+            account.banking = self.navInfo.Bank.values[0]
+            account.flowCapital = self.navInfo.Currency.values[0]
 
         ## 当日总资产
         account.asset = account.balance + account.flowCapital
@@ -1066,15 +1355,14 @@ class CtpTdApi(TdApi):
         if account.asset:
             account.marginPct = round(account.margin / account.asset,4) * 100
             ##　当日总份额
-            account.shares = self.preShares + fundingShares
+            account.shares = totalShares
             ## 当日净值
             account.nav = round((account.asset + self.feeAll + account.banking) / account.shares,4)
             ## 当日收益波动
-            account.chgpct = round(account.nav / account.preNav - 1, 4) * 100
+            account.chgpct = round(account.nav / self.preNav - 1, 4) * 100
             ## 合约价值转化
             account.value = format(account.value, ',')
         ## ---------------------------------------------------------------------
-        
         # 推送
         self.gateway.onAccount(account)
         
@@ -1719,10 +2007,9 @@ class CtpTdApi(TdApi):
         # 如果之前有过登录失败，则不再进行尝试
         if self.loginFailed:
             return
-        
+        cdef dict req = {}
         # 如果填入了用户名密码等，则登录
         if self.userID and self.password and self.brokerID:
-            req = {}
             req['UserID'] = self.userID
             req['Password'] = self.password
             req['BrokerID'] = self.brokerID
@@ -1732,8 +2019,8 @@ class CtpTdApi(TdApi):
     #----------------------------------------------------------------------
     def authenticate(self):
         """申请验证"""
+        cdef dict req = {}
         if self.userID and self.brokerID and self.authCode and self.userProductInfo:
-            req = {}
             req['UserID'] = self.userID
             req['BrokerID'] = self.brokerID
             req['AuthCode'] = self.authCode
@@ -1751,7 +2038,7 @@ class CtpTdApi(TdApi):
     def qryPosition(self):
         """查询持仓"""
         self.reqID += 1
-        req = {}
+        cdef dict req = {}
         req['BrokerID'] = self.brokerID
         req['InvestorID'] = self.userID
         self.reqQryInvestorPosition(req, self.reqID)
@@ -1829,7 +2116,7 @@ class CtpTdApi(TdApi):
         """撤单"""
         self.reqID += 1
 
-        req = {}
+        cdef dict req = {}
         
         req['InstrumentID'] = cancelOrderReq.symbol
         req['ExchangeID']   = cancelOrderReq.exchange
