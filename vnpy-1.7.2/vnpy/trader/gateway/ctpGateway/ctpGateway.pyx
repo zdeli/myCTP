@@ -868,7 +868,7 @@ class CtpTdApi(TdApi):
         if len(self.totalShares) == 0:
             self.totalShares = 0
         else:
-            self.totalShares  = self.totalShares.shares.sum()
+            self.totalShares  = int(self.totalShares.shares.sum())
 
         ## 从期货账户扣费的汇总统计
         self.feeInfo = vtFunction.dbMySQLQuery(
@@ -1276,6 +1276,8 @@ class CtpTdApi(TdApi):
         self.timer['account'] = datetime.now()
         ## ---------------------------------------------------------------------
 
+        cdef int depositShares, withdrawShares
+
         """
         onRspQryTradingAccount 获得的　data 可以参考:
         vnpy/api/ctp/py3/pyscript/ctp_struct.py
@@ -1323,20 +1325,21 @@ class CtpTdApi(TdApi):
         #     account.closeProfit = 0
         ## ----------------------------------------------
 
-        ## 当日出入金换算份额
-        cdef int fundingShares = int(account.netIncome / self.preNav)
-        if fundingShares != 0:
+        ## 当日申购的基金
+        ## 使用 preNav 计算份额
+        depositShares = int(account.deposit / self.preNav)
+        if depositShares != 0:
             ## 
             dfHeader = ['TradingDay','capital','price','shares','investor']
-            dfData = [self.tradingDay, account.netIncome, self.preNav, fundingShares, '']
+            dfData = [self.tradingDay, account.deposit, self.preNav, depositShares, '']
             df = pd.DataFrame([dfData], columns = dfHeader)
             vtFunction.dbMySQLSend(dbName = globalSetting.accountID, 
                                    query = """delete from funding
                                               where TradingDay = '%s'""" % self.tradingDay)
             vtFunction.saveMySQL(df = df, db = globalSetting.accountID, tbl = 'funding',
                       over = 'append', sourceID = 'ctpGateway')
-        ## 
-        totalShares = self.totalShares + fundingShares
+        ## 当日应该计入的所有份额数量
+        account.shares = self.totalShares + depositShares
 
         ## 当日从期货账户扣费情况
         ## 需要手动核对
@@ -1354,10 +1357,22 @@ class CtpTdApi(TdApi):
         ## ---------------------------------------------------------------------
         if account.asset:
             account.marginPct = round(account.margin / account.asset,4) * 100
-            ##　当日总份额
-            account.shares = totalShares
             ## 当日净值
             account.nav = round((account.asset + self.feeAll + account.banking) / account.shares,4)
+            ## -----------------------------------------------------------------
+            withdrawShares = -int(account.withdraw / account.nav)
+            if withdrawShares != 0:
+                ## 
+                dfHeader = ['TradingDay','capital','price','shares','investor']
+                dfData = [self.tradingDay, account.withdraw, account.nav, withdrawShares, '']
+                df = pd.DataFrame([dfData], columns = dfHeader)
+                vtFunction.dbMySQLSend(dbName = globalSetting.accountID, 
+                                       query = """delete from funding
+                                                  where TradingDay = '%s'""" % self.tradingDay)
+                vtFunction.saveMySQL(df = df, db = globalSetting.accountID, tbl = 'funding',
+                          over = 'append', sourceID = 'ctpGateway')
+            ## -----------------------------------------------------------------
+            account.shares = account.shares + withdrawShares
             ## 当日收益波动
             account.chgpct = round(account.nav / self.preNav - 1, 4) * 100
             ## 合约价值转化
