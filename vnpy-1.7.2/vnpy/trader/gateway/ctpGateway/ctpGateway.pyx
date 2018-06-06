@@ -114,9 +114,9 @@ cdef class VtGateway(object):
         self.eventEngine.put(event1)
         
         # 特定合约代码的事件
-        event2 = Event(type_=EVENT_TICK+tick.vtSymbol)
-        event2.dict_['data'] = tick
-        self.eventEngine.put(event2)
+        # event2 = Event(type_=EVENT_TICK+tick.vtSymbol)
+        # event2.dict_['data'] = tick
+        # self.eventEngine.put(event2)
     
     #----------------------------------------------------------------------
     cpdef onTrade(self, trade):
@@ -127,9 +127,9 @@ cdef class VtGateway(object):
         self.eventEngine.put(event1)
         
         # 特定合约的成交事件
-        event2 = Event(type_=EVENT_TRADE+trade.vtSymbol)
-        event2.dict_['data'] = trade
-        self.eventEngine.put(event2)        
+        # event2 = Event(type_=EVENT_TRADE+trade.vtSymbol)
+        # event2.dict_['data'] = trade
+        # self.eventEngine.put(event2)        
     
     #----------------------------------------------------------------------
     cpdef onOrder(self, order):
@@ -140,9 +140,9 @@ cdef class VtGateway(object):
         self.eventEngine.put(event1)
         
         # 特定订单编号的事件
-        event2 = Event(type_=EVENT_ORDER+order.vtOrderID)
-        event2.dict_['data'] = order
-        self.eventEngine.put(event2)
+        # event2 = Event(type_=EVENT_ORDER+order.vtOrderID)
+        # event2.dict_['data'] = order
+        # self.eventEngine.put(event2)
     
     #----------------------------------------------------------------------
     cpdef onPosition(self, position):
@@ -153,9 +153,9 @@ cdef class VtGateway(object):
         self.eventEngine.put(event1)
         
         # 特定合约代码的事件
-        event2 = Event(type_=EVENT_POSITION+position.vtSymbol)
-        event2.dict_['data'] = position
-        self.eventEngine.put(event2)
+        # event2 = Event(type_=EVENT_POSITION+position.vtSymbol)
+        # event2.dict_['data'] = position
+        # self.eventEngine.put(event2)
     
     #----------------------------------------------------------------------
     cpdef onAccount(self, account):
@@ -166,9 +166,9 @@ cdef class VtGateway(object):
         self.eventEngine.put(event1)
         
         # 特定合约代码的事件
-        event2 = Event(type_=EVENT_ACCOUNT+account.vtAccountID)
-        event2.dict_['data'] = account
-        self.eventEngine.put(event2)
+        # event2 = Event(type_=EVENT_ACCOUNT+account.vtAccountID)
+        # event2.dict_['data'] = account
+        # self.eventEngine.put(event2)
     
     #----------------------------------------------------------------------
     cpdef onError(self, error):
@@ -799,38 +799,6 @@ class CtpTdApi(TdApi):
                       'position': datetime.now()}
         ## ---------------------------------------------------------------------
 
-        ## ---------------------------------------------------------------------
-        # self.preShares = vtFunction.dbMySQLQuery(
-        #                 globalSetting.accountID,
-        #                 """
-        #                 select *
-        #                 from funding
-        #                 where TradingDay < '%s'
-        #                 """ % self.tradingDay).shares.sum()
-
-        # self.navInfo = vtFunction.dbMySQLQuery(
-        #                 globalSetting.accountID,
-        #                 """
-        #                 select *
-        #                 from nav
-        #                 where TradingDay = '%s'
-        #                 """ % self.lastTradingDay)
-        # self.feeInfo = vtFunction.dbMySQLQuery(
-        #                 globalSetting.accountID,
-        #                 """
-        #                 select *
-        #                 from fee
-        #                 """)
-
-        # if len(self.feeInfo):
-        #     self.feePre = self.feeInfo.loc[self.feeInfo.TradingDay < self.tradingDate].Amount.sum()
-        #     self.feeToday = self.feeInfo.loc[self.feeInfo.TradingDay == self.tradingDate].Amount.sum()
-        # else:
-        #     self.feePre = 0
-        #     self.feeToday = 0
-
-        # self.feeAll = self.feePre + self.feeToday
-        
         ## 上一个交易日的净值
         self.preNav_account = vtFunction.dbMySQLQuery(
                         globalSetting.accountID,
@@ -1179,96 +1147,6 @@ class CtpTdApi(TdApi):
     #----------------------------------------------------------------------
     def onRspQryTradingAccount(self, data, error, n, last):
         """资金账户查询回报"""
-
-        # ## ---------------------------------------------------------------------
-        # ## 不要那么频繁的更新数据
-        # if (datetime.now() - self.timer['account']).seconds <= 15:
-        #     return
-        # self.timer['account'] = datetime.now()
-        # ## ---------------------------------------------------------------------
-
-        # """
-        # onRspQryTradingAccount 获得的　data 可以参考:
-        # vnpy/api/ctp/py3/pyscript/ctp_struct.py
-        # #资金账户
-        # CThostFtdcTradingAccountField = {}
-        # """
-        # account = VtAccountData()
-        # account.gatewayName = self.gatewayName
-
-        # # 账户代码
-        
-        # # account.TradingDay = self.tradingDay
-        # # account.updateTime  = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        
-        # account.accountID = '.'.join([self.gatewayName, data['AccountID']])
-        # account.accountName = globalSetting.accountName
-        # # account.vtAccountID = '.'.join([self.gatewayName, account.accountID])
-
-        # account.preBalance = round(data['PreBalance'],2)
-        # account.balance = round(data['PreBalance'] - data['PreCredit'] - data['PreMortgage'] +
-        #                    data['Mortgage'] - data['Withdraw'] + data['Deposit'] +
-        #                    data['CloseProfit'] + data['PositionProfit'] + data['CashIn'] -
-        #                    data['Commission'],2)
-        # account.available = round(data['Available'],2)
-
-        # account.value = sum(
-        #                    [self.gateway.posInfoDict[k]['position'] * self.gateway.posInfoDict[k]['price'] * self.gateway.posInfoDict[k]['size'] for k in self.gateway.posInfoDict.keys()]
-        #                     )
-
-        # if self.gateway.initialCapital:
-        #     account.leverage   = round(account.value / self.gateway.initialCapital,2)
-
-        # account.commission     = round(data['Commission'],2)
-        # account.margin         = round(data['CurrMargin'],2)
-        # account.closeProfit    = round(data['CloseProfit'],2)
-        # account.positionProfit = round(data['PositionProfit'],2)
-        # account.profit         = account.closeProfit + account.positionProfit
-        # account.deposit        = round(data['Deposit'],2)
-        # account.withdraw       = round(data['Withdraw'],2)
-
-        # ## ----------------------------------------------
-        # # if (globalSetting.accountID in ['YongAnLYB', 'ShenWanYYX'] and 
-        # #     not ( (datetime.now().hour == 14 and datetime.now().minute > 50) or 
-        # #           (datetime.now().hour == 15 and datetime.now().minute <= 15) ) ):
-        # #     account.closeProfit = 0
-        # ## ----------------------------------------------
-
-        # if len(self.navInfo):
-        #     account.preNav = self.navInfo.NAV.values[0]
-        #     account.flowCapital = self.navInfo.Currency.values[0]
-        #     account.banking = self.navInfo.Bank.values[0]
-        # else:
-        #     if (account.preBalance == 0):
-        #         account.preNav = 1
-        #     else:
-        #         account.preNav = (account.preBalance + self.gateway.flowCapital) / self.preShares
-        #     account.flowCapital = self.gateway.flowCapital
-        #     account.banking = 0
-
-        # ## 当日出入金换算份额
-        # cdef int fundingShares = int(math.floor((account.deposit - account.withdraw) / account.preNav))
-
-        # ## 当日从期货账户扣费情况
-        # ## 需要手动核对
-        # account.fee = self.feeToday
-
-        # ## 当日总资产
-        # account.asset = account.balance + account.flowCapital
-        # ## ---------------------------------------------------------------------
-        # if account.asset:
-        #     account.marginPct = round(account.margin / account.asset,4) * 100
-        #     ##　当日总份额
-        #     account.shares = self.preShares + fundingShares
-        #     ## 当日净值
-        #     account.nav = round((account.asset + self.feeAll + account.banking) / account.shares,4)
-        #     ## 当日收益波动
-        #     account.chgpct = round(account.nav / account.preNav - 1, 4) * 100
-        #     ## 合约价值转化
-        #     account.value = format(account.value, ',')
-        # ## ---------------------------------------------------------------------
-        
-
         ## ---------------------------------------------------------------------
         ## 不要那么频繁的更新数据
         if (datetime.now() - self.timer['account']).seconds <= 15:
