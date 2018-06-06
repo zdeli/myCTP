@@ -89,10 +89,10 @@ cdef class DrEngine(object):
 
         ## =====================================================================
         self.DAY_START   = time(8, 00)       # 日盘启动和停止时间
-        self.DAY_END     = time(15, 30)
+        self.DAY_END     = time(15, 18)
 
         self.NIGHT_START = time(20, 00)      # 夜盘启动和停止时间
-        self.NIGHT_END   = time(2, 30)
+        self.NIGHT_END   = time(2, 32)
         self.exitCounter = 0
         ## =====================================================================
 
@@ -122,7 +122,6 @@ cdef class DrEngine(object):
             req.exchange = contract['exchange']
 
             if contract['symbol']:
-                # print req.__dict__
                 self.mainEngine.subscribe(req, contract['gatewayName'])
             ## -----------------------------------------------------------------
         ## =====================================================================

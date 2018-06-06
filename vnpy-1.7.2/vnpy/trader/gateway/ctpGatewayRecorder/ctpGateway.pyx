@@ -95,9 +95,9 @@ cdef class VtGateway(object):
         self.eventEngine.put(event1)
         
         # 特定合约的成交事件
-        event2 = Event(type_=EVENT_TRADE+trade.vtSymbol)
-        event2.dict_['data'] = trade
-        self.eventEngine.put(event2)        
+        # event2 = Event(type_=EVENT_TRADE+trade.vtSymbol)
+        # event2.dict_['data'] = trade
+        # self.eventEngine.put(event2)        
     
     #----------------------------------------------------------------------
     cpdef onOrder(self, order):
@@ -108,9 +108,9 @@ cdef class VtGateway(object):
         self.eventEngine.put(event1)
         
         # 特定订单编号的事件
-        event2 = Event(type_=EVENT_ORDER+order.vtOrderID)
-        event2.dict_['data'] = order
-        self.eventEngine.put(event2)
+        # event2 = Event(type_=EVENT_ORDER+order.vtOrderID)
+        # event2.dict_['data'] = order
+        # self.eventEngine.put(event2)
     
     #----------------------------------------------------------------------
     cpdef onPosition(self, position):
@@ -121,9 +121,9 @@ cdef class VtGateway(object):
         self.eventEngine.put(event1)
         
         # 特定合约代码的事件
-        event2 = Event(type_=EVENT_POSITION+position.vtSymbol)
-        event2.dict_['data'] = position
-        self.eventEngine.put(event2)
+        # event2 = Event(type_=EVENT_POSITION+position.vtSymbol)
+        # event2.dict_['data'] = position
+        # self.eventEngine.put(event2)
     
     #----------------------------------------------------------------------
     cpdef onAccount(self, account):
@@ -134,9 +134,9 @@ cdef class VtGateway(object):
         self.eventEngine.put(event1)
         
         # 特定合约代码的事件
-        event2 = Event(type_=EVENT_ACCOUNT+account.vtAccountID)
-        event2.dict_['data'] = account
-        self.eventEngine.put(event2)
+        # event2 = Event(type_=EVENT_ACCOUNT+account.vtAccountID)
+        # event2.dict_['data'] = account
+        # self.eventEngine.put(event2)
     
     #----------------------------------------------------------------------
     cpdef onError(self, error):
