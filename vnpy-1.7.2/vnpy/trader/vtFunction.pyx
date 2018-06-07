@@ -29,7 +29,7 @@ from email.header import Header
 import codecs
 
 #----------------------------------------------------------------------
-def safeUnicode(value):
+cpdef safeUnicode(value):
     """检查接口数据潜在的错误，保证转化为的字符串正确"""
     # 检查是数字接近0时会出现的浮点数上限
     if type(value) is int or type(value) is float:
@@ -46,7 +46,7 @@ def safeUnicode(value):
 
 
 #----------------------------------------------------------------------
-def todayDate():
+cpdef todayDate():
     """获取当前本机电脑时间的日期"""
     return datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
 
@@ -70,14 +70,14 @@ for root, subdirs, files in os.walk(path):
             iconPathDict[fileName] = os.path.join(root, fileName)
 
 #----------------------------------------------------------------------
-def loadIconPath(iconName):
+cpdef loadIconPath(iconName):
     """加载程序图标路径"""
     global iconPathDict
     return iconPathDict.get(iconName, '')
 
 
 #----------------------------------------------------------------------
-def getTempPath(name):
+cpdef getTempPath(name):
     """获取存放临时文件的路径"""
     tempPath = os.path.join(os.getcwd(), 'temp')
     if not os.path.exists(tempPath):
@@ -87,7 +87,7 @@ def getTempPath(name):
     return path
 
 ## -----------------------------------------------------------------------------
-def getLogPath(name):
+cpdef getLogPath(name):
     """获取存放临时文件的路径"""
     logPath = os.path.join(os.getcwd(), 'trading/log')
     if not os.path.exists(logPath):
@@ -100,7 +100,7 @@ def getLogPath(name):
 jsonPathDict = {}
 
 #----------------------------------------------------------------------
-def getJsonPath(name, moduleFile):
+cpdef getJsonPath(name, moduleFile):
     """
     获取JSON配置文件的路径：
     1. 优先从当前工作目录查找JSON文件
@@ -121,7 +121,7 @@ def getJsonPath(name, moduleFile):
 ## william
 ## dbMySQLConnect
 ## -------------------------------------------------------------------------
-def dbMySQLConnect(str dbName):
+cpdef dbMySQLConnect(str dbName):
     """连接 mySQL 数据库"""
     try:
         conn = MySQLdb.connect(db          = dbName,
@@ -140,7 +140,7 @@ def dbMySQLConnect(str dbName):
 ## william
 ## 从 MySQL 数据库查询数据
 ## -----------------------------------------------------------------------------
-def dbMySQLQuery(str dbName, query):
+cpdef dbMySQLQuery(str dbName, query):
     """ 从 MySQL 中读取数据 """
     try:
         conn = MySQLdb.connect(db          = dbName,
@@ -154,25 +154,32 @@ def dbMySQLQuery(str dbName, query):
         return mysqlData
     except (MySQLdb.Error, MySQLdb.Warning, TypeError) as e:
         print e
-    finally:
-        conn.close()
+    # finally:
+    #     conn.close()
 ## =============================================================================
 
 ## =============================================================================
 ## william
 ## 从 MySQL 数据库发送命令
 ## -----------------------------------------------------------------------------
-def dbMySQLSend(str dbName, query):
+cpdef dbMySQLSend(str dbName, query):
     """ 从 MySQL 中读取数据 """
     try:
-        conn = dbMySQLConnect(dbName)
+        # conn = dbMySQLConnect(dbName)
+        conn = MySQLdb.connect(db          = dbName,
+                               host        = globalSetting().vtSetting["mysqlHost"],
+                               port        = globalSetting().vtSetting["mysqlPort"],
+                               user        = globalSetting().vtSetting["mysqlUser"],
+                               passwd      = globalSetting().vtSetting["mysqlPassword"],
+                               use_unicode = True,
+                               charset     = "utf8")
         cursor = conn.cursor()
         cursor.execute(query)
         conn.commit()
     except (MySQLdb.Error, MySQLdb.Warning, TypeError) as e:
         print e
-    finally:
-        conn.close()
+    # finally:
+    #     conn.close()
 ## =============================================================================
 
 
@@ -180,7 +187,7 @@ def dbMySQLSend(str dbName, query):
 ## william
 ## 实现 MySQL 数据在本地数据库与远程服务器数据库的同步
 ## -----------------------------------------------------------------------------
-def dbMySQLSync(fromHost, toHost, fromDB, toDB, tableName = '', condition = ''):
+cpdef dbMySQLSync(fromHost, toHost, str fromDB, str toDB, tableName = '', condition = ''):
     """同步 MySQL 数据"""
     ## ------------------------------------------------------
     ## condition 格式如下
@@ -195,7 +202,6 @@ def dbMySQLSync(fromHost, toHost, fromDB, toDB, tableName = '', condition = ''):
         condition = condition)
     try:
         ## 不显示 shell 内容
-        ## stdout=subprocess.PIPE, stderr=subprocess.PIPE
         subprocess.call(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     except:
         None
@@ -206,7 +212,7 @@ def dbMySQLSync(fromHost, toHost, fromDB, toDB, tableName = '', condition = ''):
 ## william
 ## 从 MySQL 数据库查询数据
 ## -----------------------------------------------------------------------------
-def fetchMySQL(str db, query):
+cpdef fetchMySQL(str db, query):
     ## 用sqlalchemy构建数据库链接 engine
     ## 记得使用 ?charset=utf8 解决中文乱码的问题
     try:
@@ -228,7 +234,7 @@ def fetchMySQL(str db, query):
 ## william
 ## 写入 MySQL
 ## -----------------------------------------------------------------------------
-def saveMySQL(df, str db, tbl, str over, str sourceID = ''):
+cpdef saveMySQL(df, str db, str tbl, str over, str sourceID = ''):
     ## 用sqlalchemy构建数据库链接 engine
     ## 记得使用 ?charset=utf8 解决中文乱码的问题
     try:
@@ -252,12 +258,12 @@ ChinaFuturesCalendar = dbMySQLQuery('dev',
     """select * from ChinaFuturesCalendar where days >= 20170101;""")
 ChinaFuturesCalendar.days = ChinaFuturesCalendar.days.apply(str)
 ChinaFuturesCalendar.nights = ChinaFuturesCalendar.nights.apply(str)
-for i in range(len(ChinaFuturesCalendar)):
+for i in xrange(len(ChinaFuturesCalendar)):
     ChinaFuturesCalendar.loc[i, 'days'] = ChinaFuturesCalendar.loc[i, 'days'].replace('-','')
     ChinaFuturesCalendar.loc[i, 'nights'] = ChinaFuturesCalendar.loc[i, 'nights'].replace('-','')
 
 ## -----------------------------------------------------------------------------
-def tradingDay():
+cpdef str tradingDay():
     if 8 <= datetime.now().hour < 17:
         tempRes = datetime.now().strftime("%Y%m%d")
     else:
@@ -266,14 +272,14 @@ def tradingDay():
         tempRes = temp.tail(1).values[0]
     return tempRes
 ## -----------------------------------------------------------------------------
-def tradingDate():
+cpdef tradingDate():
     return datetime.strptime(tradingDay(),'%Y%m%d').date()
 ## -----------------------------------------------------------------------------
-def lastTradingDay():
+cpdef str lastTradingDay():
     return ChinaFuturesCalendar.loc[ChinaFuturesCalendar.days <
                                     tradingDay(), 'days'].max()
 ## -----------------------------------------------------------------------------
-def lastTradingDate():
+cpdef lastTradingDate():
     return datetime.strptime(lastTradingDay(),'%Y%m%d').date()
 ## =============================================================================
 
@@ -281,7 +287,8 @@ def lastTradingDate():
 
 ## =========================================================================
 ## 保存合约信息
-def saveContractInfo():
+cpdef saveContractInfo():
+    cdef int i
     try:
         dataFileOld = os.path.join(globalSetting().vtSetting['DATA_PATH'],
                                    globalSetting.accountID,
@@ -293,7 +300,7 @@ def saveContractInfo():
         if os.path.exists(dataFileOld):
             dataOld = pd.read_csv(dataFileOld)
             dataNew = pd.read_csv(dataFileNew)
-            for i in range(dataOld.shape[0]):
+            for i in xrange(dataOld.shape[0]):
                 if dataNew.at[i,'symbol'] not in dataOld.symbol.values:
                     dataOld = dataOld.append(dataNew.loc[i], ignore_index = True)
             dataOld.to_csv(dataFileOld, index = False)
@@ -306,9 +313,9 @@ def saveContractInfo():
 ############################################################################
 ## 验证 IP 有效性
 ############################################################################
-def vetifyIP(ip, count = 1, timeout = 1):
+cpdef vetifyIP(ip, int count = 1, timeout = 1):
     """验证 Ip 有效性"""
-    cmd = '/bin/ping -c %d -w %d %s' %(count, timeout, ip)
+    cmd = '/bin/ping -c%d -w%d %s' %(count, timeout, ip)
 
     rsp = subprocess.Popen(cmd, 
                     stdin=subprocess.PIPE,
@@ -316,32 +323,31 @@ def vetifyIP(ip, count = 1, timeout = 1):
                     stderr=subprocess.PIPE,
                     shell=True
                     )
-    
+
     result = rsp.stdout.read()
+
     ## 结果为空
     if not result:
-        print u"%s :==> 无效" %(ip)
         return None
 
     regex = re.findall('100% packet loss', result)
+
     if len(regex) != 0:
         ## 存在丢包
-        print u"%s :==> 无效" %(ip)
         return None
     else:
         ## 没有丢包
-        print u"%s :==> 有效" %(ip)
-        return ip
+        return True
 
 ############################################################################
 ## 发送邮件通知
 ############################################################################
-def sendMail(accountName, content):
+cpdef sendMail(accountName, content):
     """发送邮件通知给：汉云交易员"""
     cdef:
         list receiversMain = ['fl@hicloud-investment.com']
         list receiversOthers = ['lhg@hicloud-investment.com']
-        str sender = "trader" + '@hicloud.com'
+        char* sender = "trader@hicloud.com"
 
     message = MIMEText(content.decode('string-escape').decode("utf-8"), 'plain', 'utf-8')
     ## 显示:发件人
@@ -362,7 +368,7 @@ def sendMail(accountName, content):
         print(u'预警邮件发送失败')
     ## ---------------------------------------------------------------------
 
-def getHostIP():
+cpdef getHostIP():
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
