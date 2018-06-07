@@ -114,9 +114,10 @@ cdef class VtGateway(object):
         self.eventEngine.put(event1)
         
         # 特定合约代码的事件
-        # event2 = Event(type_=EVENT_TICK+tick.vtSymbol)
-        # event2.dict_['data'] = tick
-        # self.eventEngine.put(event2)
+        # 这个不能注释掉,否则在 UI 端无法显示行情数据
+        event2 = Event(type_=EVENT_TICK+tick.vtSymbol)
+        event2.dict_['data'] = tick
+        self.eventEngine.put(event2)
     
     #----------------------------------------------------------------------
     cpdef onTrade(self, trade):
@@ -287,10 +288,12 @@ cdef class CtpGateway(VtGateway):
                 else:
                     result = vtFunction.vetifyIP(ip)
                 ## ----------------------------------
-                if result:
+                if result is True:
                     tdAddress = "tcp://" + ip + ":" + setting['tdPort']
                     tdAddress = str(tdAddress)
                     break
+                else:
+                    continue
 
             for ip in setting['mdIP']:
                 ## ----------------------------------
@@ -299,10 +302,12 @@ cdef class CtpGateway(VtGateway):
                 else:
                     result = vtFunction.vetifyIP(ip)
                 ## ----------------------------------
-                if result:
+                if result is True:
                     mdAddress = "tcp://" + ip + ":" + setting['mdPort']
                     mdAddress = str(mdAddress)
                     break
+                else:
+                    continue
             # -------------------------------------
 
             # 如果json文件提供了验证码
@@ -454,15 +459,15 @@ class CtpMdApi(MdApi):
         self.lastTradingDay = vtFunction.lastTradingDay()
         self.tickTime = None                # 最新行情time对象
 
-        self.recorderFields = [
-            "lastPrice",
-            "openPrice","highestPrice","lowestPrice","closePrice",
-            "upperLimit","lowerLimit",
-            "preClosePrice","preOpenInterest","openInterest",
-            "preDelta","currDelta",
-            "bidPrice1","bidPrice2","bidPrice3","bidPrice4","bidPrice5",
-            "askPrice1","askPrice2","askPrice3","askPrice4","askPrice5",
-            "preSettlementPrice","settlementPrice","averagePrice"]
+        # self.recorderFields = [
+        #     "lastPrice",
+        #     "openPrice","highestPrice","lowestPrice","closePrice",
+        #     "upperLimit","lowerLimit",
+        #     "preClosePrice","preOpenInterest","openInterest",
+        #     "preDelta","currDelta",
+        #     "bidPrice1","bidPrice2","bidPrice3","bidPrice4","bidPrice5",
+        #     "askPrice1","askPrice2","askPrice3","askPrice4","askPrice5",
+        #     "preSettlementPrice","settlementPrice","averagePrice"]
 
     #----------------------------------------------------------------------
     def onFrontConnected(self):
