@@ -459,17 +459,19 @@ class OIStrategy(CtaTemplate):
             if self.tradingBetween:
                 ## ----------------------------
                 if (id[0:2] not in ['bu','cs','pb','c1','a1','b1','y1','l1','p1'] and 
-                    m <= 55):
+                    m < self.tradingCloseMinute2-3):
                     tempPriceType = 'best'
+                    tempAddTick   = -1
                 else:
                     tempPriceType = 'last'
+                    tempAddTick   = 0
                 ## ----------------------------
                 self.prepareTradingOrderSplit(
                     vtSymbol      = id,
                     tradingOrders = self.tradingOrdersClose,
                     orderIDList   = self.vtOrderIDListClose,
                     priceType     = tempPriceType,
-                    addTick       = self.closeAddTick)
+                    addTick       = self.closeAddTick + tempAddTick)
                 ## ----------------------------
                 # self.prepareSplit(
                 #     vtSymbol      = id,
