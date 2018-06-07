@@ -631,9 +631,6 @@ class CtaTemplate(object):
         ## ---------------------------------------------------------------------
         allOrders = self.ctaEngine.mainEngine.getAllOrdersDataFrame()
         if len(allOrders):
-            # tempFinishedOrders = allOrders.loc[allOrders.status.isin([u'已撤销',u'全部成交'])][\
-            #                                    allOrders.vtSymbol == vtSymbol][\
-            #                                    allOrders.vtOrderID.isin(orderIDList)].vtOrderID.values
             tempFinishedOrders = allOrders[(allOrders.vtSymbol == vtSymbol) & \
                                            (allOrders.status.isin([u'已撤销',u'全部成交'])) & \
                                            (allOrders.vtOrderID.isin(orderIDList))].vtOrderID.values
@@ -650,26 +647,6 @@ class CtaTemplate(object):
             if ((not tradingOrders[i]['vtOrderIDList']) or 
                 (all(vtOrderID in tempFinishedOrders for 
                                   vtOrderID in tradingOrders[i]['vtOrderIDList']))):
-                # if (self.tradingEnd and 
-                #     ((datetime.now() - self.tickTimer[vtSymbol]).seconds > 3) and 
-                #     len(tradingOrders[i]['vtOrderIDList'])):
-                #     self.tickTimer[vtSymbol] = datetime.now()
-                #     tempWorkingOrders = allOrders.loc[allOrders.status.isin([u'未成交',u'部分成交'])][\
-                #                                       allOrders.vtSymbol == vtSymbol][\
-                #                                       allOrders.vtOrderID.isin(orderIDList)].vtOrderID.values
-                #     if not tempWorkingOrders:
-                #         return
-                #     for vtOrderID in tradingOrders[i]['vtOrderIDList']:
-                #         if vtOrderID in tempWorkingOrders:
-                #             self.cancelOrder(vtOrderID)
-                # else:
-                #     self.sendTradingOrder(tradingOrders = tradingOrders,
-                #                           orderDict     = tradingOrders[i],
-                #                           orderIDList   = orderIDList,
-                #                           priceType     = priceType,
-                #                           price         = price,
-                #                           addTick       = addTick,
-                #                           discount      = discount)
                 self.sendTradingOrder(tradingOrders = tradingOrders,
                                       orderDict     = tradingOrders[i],
                                       orderIDList   = orderIDList,
@@ -725,6 +702,8 @@ class CtaTemplate(object):
             str status_quick, status_slow
             float remainingMinute
             str i, l
+            int h = datetime.now().hour
+            int m = datetime.now().minute
         ## ---------------------------------------------------------------------
         allOrders = self.ctaEngine.mainEngine.getAllOrdersDataFrame()
         if len(allOrders):
@@ -745,17 +724,17 @@ class CtaTemplate(object):
                               sum([tradingOrders[i]['subOrders'][l]['volume'] for l in ['level1','level2']]) * 2
                 ## ---------------------------------------------------------------------------------
                 if len(allOrders):
-                    # tempCanceledOrder  = allOrders.loc[(allOrders.status.isin([u'已撤销'])) &\
-                    #                                    (allOrders.vtSymbol == vtSymbol) &\
-                    #                                    (allOrders.vtOrderID.isin(orderIDList))]
-                    # tempCanceledVolume = sum(tempCanceledOrder.totalVolume)
+                    tempCanceledOrder  = allOrders.loc[(allOrders.status.isin([u'已撤销'])) &\
+                                                       (allOrders.vtSymbol == vtSymbol) &\
+                                                       (allOrders.vtOrderID.isin(orderIDList))]
+                    tempCanceledVolume = sum(tempCanceledOrder.totalVolume)
                     tempFinishedOrders = allOrders[(allOrders.status.isin([u'全部成交'])) &\
                                                    (allOrders.vtSymbol == vtSymbol) &\
                                                    (allOrders.vtOrderID.isin(orderIDList))]
                     tempFinishedVolume = sum(tempFinishedOrders.totalVolume)
                 else:
-                    # tempCanceledOrder  = []
-                    # tempCanceledVolume = 0
+                    tempCanceledOrder  = []
+                    tempCanceledVolume = 0
                     tempFinishedVolume = 0
                 ## 剩余待下单的手数
                 remainingVolume = totalVolume - tempWorkingVolume - tempFinishedVolume
@@ -789,19 +768,18 @@ class CtaTemplate(object):
                                           price         = price_0)
                     tradingOrders[i]['subOrders']['level0']['status'] = 'sended'
                     return
-                # elif len(tempCanceledOrder):
-                #     if (datetime.now().hour in [8,9,20,21] and 
-                #         datetime.now().minute <= 10 and
-                #         any(x in tradingOrders[i]['vtOrderIDList'] for 
-                #             x in tempCanceledOrder.vtOrderID.values) and 
-                #        ((datetime.now() - self.tickTimer[vtSymbol]).microseconds > 10000)):
-                #         self.sendTradingOrder(tradingOrders = tradingOrders,
-                #                               orderDict     = tradingOrders[i],
-                #                               orderIDList   = orderIDList,
-                #                               priceType     = 'limit',
-                #                               volume        = remainingVolume,
-                #                               price         = price_0)
-                #         return
+                elif len(tempCanceledOrder):
+                    if (h in [8,9,20,21] and m < 2 and
+                        any(x in tradingOrders[i]['vtOrderIDList'] for 
+                            x in tempCanceledOrder.vtOrderID.values) and 
+                       ((datetime.now() - self.tickTimer[vtSymbol]).microseconds > 10000)):
+                        self.sendTradingOrder(tradingOrders = tradingOrders,
+                                              orderDict     = tradingOrders[i],
+                                              orderIDList   = orderIDList,
+                                              priceType     = 'limit',
+                                              volume        = remainingVolume,
+                                              price         = price_0)
+                        return
                 # ---------------------------------------------------------------------------------            
 
                 ## ---------------------------------------------------------------------------------
@@ -884,7 +862,7 @@ class CtaTemplate(object):
             elif (self.tradingBetween and 
                  (datetime.now() - tradingOrders[i]['lastTimer']).seconds >= self.randomNo):
                 ## -------------------------------------------------------------
-                remainingMinute = (self.tradingCloseMinute2-1 - datetime.now().minute) / (self.randomNo / 60.0)
+                remainingMinute = (self.tradingCloseMinute2-1 - m) / (self.randomNo / 60.0)
                 if remainingMinute == 0:
                     return
                 remainingVolume = int(math.ceil(
