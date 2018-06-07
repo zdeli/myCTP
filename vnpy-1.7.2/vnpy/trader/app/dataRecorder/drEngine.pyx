@@ -157,13 +157,13 @@ cdef class DrEngine(object):
         self.second = datetime.now().second
         ## ------------------------
 
-        if (self.minute % 5 != 0 or self.second % 20 != 0):
+        if (self.minute % 2 != 0 or self.second % 20 != 0):
             return
 
         ## ---------------------------------------------------------------------
         if ((self.hour == self.NIGHT_END.hour and self.minute >= self.NIGHT_END.minute) or
             (self.hour == self.DAY_END.hour and self.minute >= self.DAY_END.minute) or
-            (self.hour in [self.NIGHT_START.hour, self.DAY_START.hour] and 52 <= self.minute < 55)):
+            (self.hour in [self.NIGHT_START.hour, self.DAY_START.hour] and 50 <= self.minute < 55)):
             self.exitCounter += 1
             self.mainEngine.writeLog(u'即将退出系统，计数器：%s' %self.exitCounter,
                                      gatewayName = 'DATA_RECORDER')
