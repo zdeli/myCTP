@@ -10,3 +10,6 @@ MySQL-python
 pymysql
 tabulate
 wmi
+ciso8601
+cython
+ujson
