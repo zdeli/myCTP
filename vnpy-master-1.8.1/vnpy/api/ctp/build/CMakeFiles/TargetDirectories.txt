@@ -1,0 +1,4 @@
+/home/william/Documents/myCTP/vnpy-master-1.8.1/vnpy/api/ctp/build/CMakeFiles/edit_cache.dir
+/home/william/Documents/myCTP/vnpy-master-1.8.1/vnpy/api/ctp/build/CMakeFiles/rebuild_cache.dir
+/home/william/Documents/myCTP/vnpy-master-1.8.1/vnpy/api/ctp/build/CMakeFiles/vnctpmd.dir
+/home/william/Documents/myCTP/vnpy-master-1.8.1/vnpy/api/ctp/build/CMakeFiles/vnctptd.dir

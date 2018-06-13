@@ -1,0 +1,15 @@
+pymongo 
+pyqtgraph
+websocket-client
+msgpack-python
+qdarkstyle
+SortedContainers
+snappy
+ConfigParser
+MySQL-python
+pymysql
+tabulate
+wmi
+ciso8601
+cython
+ujson

@@ -1,0 +1,41 @@
+#!/bin/bash
+
+#Build ctp/lts/ib api
+pushd vnpy/api/ctp
+bash build.sh
+popd
+
+# pushd vnpy/api/lts
+# bash build.sh
+# popd
+
+pushd vnpy/api/xtp
+bash build.sh
+popd
+
+# pushd vnpy/api/ib
+# bash build.sh
+# popd
+
+## Install Ta-Lib
+# conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/free/
+# conda config --set show_channel_urls yes
+conda install -c quantopian ta-lib=0.4.9
+conda install libgcc
+conda install pandas=0.18.0
+# conda uninstall pyqt
+# conda install pyqt=4
+
+pip install sqlalchemy==1.1.15
+
+#Install Python Modules
+pip install -r requirements.txt
+
+## sudo pypy -m pip install -r requirements.txt
+
+pip install cython
+
+## =============================================================================
+rm -rf /home/william/anaconda2/lib/python2.7/site-packages/vnpy
+rm -rf /home/william/anaconda2/lib/python2.7/site-packages/vnpy-1.7.2*
+## =============================================================================
