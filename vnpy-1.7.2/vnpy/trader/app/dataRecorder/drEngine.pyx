@@ -85,6 +85,12 @@ cdef class DrEngine(object):
                 wr = csv.writer(f)
                 wr.writerow(self.tickHeader)
             f.close()
+
+        ## ---------------------------------------
+        self.csvFile = open(self.dataFile, 'a')
+        self.csvWriter = csv.writer(self.csvFile)
+        ## ---------------------------------------
+        
         ########################################################################
 
         ## =====================================================================
@@ -129,18 +135,27 @@ cdef class DrEngine(object):
     #----------------------------------------------------------------------
     cpdef procecssTickEvent(self, event):
         """处理行情事件"""
+        ## ---------------------------------------------------------------
         # data = [event.dict_['data'].__dict__[k] for k in self.tickHeader]
         # print data
         # with open(self.dataFile, 'a') as f:
         #     wr = csv.writer(f)
         #     wr.writerow([event.dict_['data'].__dict__[k] for k in self.tickHeader])
+        ## ---------------------------------------------------------------
         
         # print event.dict_['InstrumentID']
         # print [event.dict_[k] for k in self.dataHeader]
         # print '\n'
-        with open(self.dataFile, 'a') as f:
-            wr = csv.writer(f)
-            wr.writerow([event.dict_[k] for k in self.dataHeader])
+       
+        ## ---------------------------------------------------------------
+        # with open(self.dataFile, 'a') as f:
+        #     wr = csv.writer(f)
+        #     wr.writerow([event.dict_[k] for k in self.dataHeader])
+        ## ---------------------------------------------------------------
+
+        ## ---------------------------------------------------------------
+        self.csvWriter.writerow([event.dict_[k] for k in self.dataHeader])
+        ## ---------------------------------------------------------------
 
         ## =====================================================================
 
@@ -163,10 +178,19 @@ cdef class DrEngine(object):
         ## ---------------------------------------------------------------------
         if ((self.hour == self.NIGHT_END.hour and self.minute >= self.NIGHT_END.minute) or
             (self.hour == self.DAY_END.hour and self.minute >= self.DAY_END.minute) or
-            (self.hour in [self.NIGHT_START.hour, self.DAY_START.hour] and 50 <= self.minute < 55)):
+            (self.hour in [self.NIGHT_START.hour, self.DAY_START.hour] and 50 < self.minute < 55)):
             self.exitCounter += 1
             self.mainEngine.writeLog(u'即将退出系统，计数器：%s' %self.exitCounter,
                                      gatewayName = 'DATA_RECORDER')
+
+            if self.exitCounter == 3:
+                ## ---------------------
+                try:
+                    self.csvFile.close()
+                except:
+                    None
+                ## ---------------------
+            
             if self.exitCounter >= 3:
                 os._exit(0)
         ## ---------------------------------------------------------------------
