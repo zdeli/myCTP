@@ -15,14 +15,13 @@ import pandas as pd
 from copy import copy
 from datetime import datetime, timedelta
 from logging import *
+from pprint import pprint
 
 from vnpy.api.ctp import MdApi, TdApi, defineDict
 from vnpy.trader import vtFunction 
 from vnpy.trader.vtConstant import *
 from .language import text
 from vnpy.trader.vtGlobal import globalSetting
-
-# import ciso8601
 
 # 以下为一些VT类型和CTP类型的映射字典
 # 价格类型映射
@@ -450,7 +449,8 @@ class CtpMdApi(MdApi):
             "openPrice", "highestPrice", "lowestPrice",
             "bidPrice1", "askPrice1",
             "bidVolume1", "askVolume1",
-            "upperLimit","lowerLimit"]
+            "upperLimit","lowerLimit",
+            "exchange"]
 
         self.tradingDt = None               # 交易日datetime对象
         self.tradingDate = vtFunction.tradingDate()
@@ -1534,10 +1534,14 @@ class CtpTdApi(TdApi):
     #----------------------------------------------------------------------
     def onRtnOrder(self, data):
         """报单回报"""
+        ## -----------------------------------------------
         # 更新最大报单编号
-        newref = data['OrderRef']
-        self.orderRef = max(self.orderRef, int(newref))
-        
+        # newref = data['OrderRef']
+        # self.orderRef = max(self.orderRef, int(newref))
+        ## -----------------------------------------------
+
+        self.orderRef = max(self.orderRef, int(data['OrderRef']))
+
         # 创建报单数据对象
         order = VtOrderData()
         order.gatewayName = self.gatewayName
