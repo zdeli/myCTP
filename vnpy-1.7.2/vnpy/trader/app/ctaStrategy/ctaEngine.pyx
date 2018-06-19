@@ -41,7 +41,6 @@ from logging import INFO, ERROR
 
 ## 发送邮件通知
 import codecs
-import ciso8601
 import inspect
 
 ########################################################################
@@ -59,7 +58,6 @@ cdef class CtaEngine(object):
         dict tickStrategyDict, lastTickDict, lastBarDict
         set tradeSet
         list subscribeContracts
-        dict tickInfo
 
     ## ---------------------------------------------------------------------
     if not hasattr(sys.modules[__name__], '__file__'):
@@ -102,6 +100,17 @@ cdef class CtaEngine(object):
         self.lastTradingDay = vtFunction.lastTradingDay()
         self.lastTradingDate = vtFunction.lastTradingDate()
 
+        ## 交易所连续交易时间
+        self.exchangeTradingContinuous = False
+        ## ----------------------------------------
+        ## 交易所开盘状态确定
+        self.exchangeTradingStatus = {
+            'DCE'  : False,
+            'SHFE' : False,
+            'CZCE' : False,
+            'INE'  : False}
+        ## ----------------------------------------
+
         self.sendMailTime = datetime.now()
         self.sendMailStatus = False
         self.sendMailContent = ''
@@ -131,8 +140,7 @@ cdef class CtaEngine(object):
                                   'openPrice', 'highestPrice', 'lowestPrice',
                                   'bidPrice1', 'askPrice1',
                                   'bidVolume1', 'askVolume1',
-                                  'upperLimit','lowerLimit'
-                                  ]
+                                  'upperLimit','lowerLimit','exchange']
         self.lastBarDict       = {}
         ## ---------------------------------------------------------------------
         ## 提取 lastTick
@@ -194,8 +202,8 @@ cdef class CtaEngine(object):
                 except:
                     None
         ## ---------------------------------------------------------------------
-        # self.allContracts = list(set(self.subscribeContracts) | 
-        #                          set(self.mainContracts))
+        self.allContracts = list(set(self.subscribeContracts) | 
+                                 set(self.mainContracts))
         self.allContracts = self.subscribeContracts
         self.tickInfo = {}
         ## =====================================================================
@@ -203,9 +211,9 @@ cdef class CtaEngine(object):
         ## 1. priceTick
         ## 2. size
         ## ---------------------------------------------------------------------
-        for i in self.allContracts:
+        for x in self.allContracts:
             try:
-                self.tickInfo[i] = {k:self.mainEngine.getContract(i).__dict__[k] 
+                self.tickInfo[x] = {k:self.mainEngine.getContract(x).__dict__[k] 
                                     for k in ['vtSymbol','priceTick','size']}
             except:
                 None
@@ -427,7 +435,9 @@ cdef class CtaEngine(object):
         # 收到tick行情后，先处理本地停止单（检查是否要立即发出）
         # self.processStopOrder(tick)
         ## ---------------------------------------------------------------------
-        
+        ## 判断交易所是不是已经开盘了
+        if self.exchangeTradingContinuous:
+            self.exchangeTradingStatus[tick.exchange] = True
         ## ---------------------------------------------------------------------
         # tick时间可能出现异常数据，使用try...except实现捕捉和过滤
         try:
@@ -435,8 +445,6 @@ cdef class CtaEngine(object):
             if not tick.datetime:
                 tick.datetime = datetime.strptime(' '.join(
                                 [tick.date, tick.time]), '%Y%m%d %H:%M:%S.%f')
-                # tick.datetime = ciso8601.parse_datetime(' '.join(
-                #                 [tick.date, tick.time]), '%Y%m%d %H:%M:%S.%f')
         except ValueError:
             self.writeCtaLog(traceback.format_exc())
             return
@@ -535,6 +543,16 @@ cdef class CtaEngine(object):
             int h = datetime.now().hour
             int m = datetime.now().minute
             int s = datetime.now().second
+        ## =====================================================================
+        ## 启动尾盘交易
+        ## =====================================================================
+        if ( (h in [8,20] and m >= 59 and s >= 55) or 
+             (h in [21,22,23,0,1,2]) or 
+             (9 <= h <= 15) ):
+            self.exchangeTradingContinuous = True
+        else:
+            self.exchangeTradingContinuous = False
+        ## =====================================================================
 
         if (m % 5 != 0 or s % 20 != 0):
             return 
