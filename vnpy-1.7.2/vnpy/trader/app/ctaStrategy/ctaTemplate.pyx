@@ -20,7 +20,7 @@ from logging import INFO, ERROR
 import talib
 import pandas as pd
 from pandas.io import sql
-from datetime import *
+from datetime import datetime,time,timedelta
 import time
 import math,random
 
@@ -177,6 +177,7 @@ class CtaTemplate(object):
         self.tradingDay          = self.ctaEngine.tradingDay
         self.lastTradingDay      = self.ctaEngine.lastTradingDay
 
+        self.tradingStartCounter = 0
         self.tradingOpenHour    = [21,9]
         self.tradingOpenMinute1 = 0
         self.tradingOpenMinute2 = 10
@@ -768,11 +769,14 @@ class CtaTemplate(object):
                                           price         = price_0)
                     tradingOrders[i]['subOrders']['level0']['status'] = 'sended'
                     return
-                elif len(tempCanceledOrder):
-                    if (h in [8,9,20,21] and m < 2 and
+                elif (len(tempCanceledOrder) and self.tradingStartCounter >= 5 and 
+                     tradingOrders[i]['subOrders']['level1']['status_u'] and 
+                     tradingOrders[i]['subOrders']['level1']['status_d']):
+                    ## ---------------------------------------------------------
+                    if ( ((h in [9,21] and m < 2) or self.tradingStartCounter <= 30) and
                         any(x in tradingOrders[i]['vtOrderIDList'] for 
                             x in tempCanceledOrder.vtOrderID.values) and 
-                       ((datetime.now() - self.tickTimer[vtSymbol]).microseconds > 10000)):
+                       ((datetime.now() - self.tickTimer[vtSymbol]).seconds > 1)):
                         self.sendTradingOrder(tradingOrders = tradingOrders,
                                               orderDict     = tradingOrders[i],
                                               orderIDList   = orderIDList,
@@ -780,6 +784,7 @@ class CtaTemplate(object):
                                               volume        = remainingVolume,
                                               price         = price_0)
                         return
+                    ## ---------------------------------------------------------
                 # ---------------------------------------------------------------------------------            
 
                 ## ---------------------------------------------------------------------------------
@@ -906,35 +911,35 @@ class CtaTemplate(object):
         allOrders = self.ctaEngine.mainEngine.getAllOrdersDataFrame()
 
         cdef:
-            int tempWorkingVolume,
+            int tempWorkingVolume = 0,
             float remainingMinute
             int tempAddTick
             float tempDiscount
             int tradingVolume
             int remainingVolume
             int tempVolume
+            int h = datetime.now().hour
+            int m = datetime.now().minute
 
         if len(allOrders):
             tempWorkingOrders  = allOrders[(allOrders['vtSymbol'] == vtSymbol) & 
                                            (allOrders['status'].isin([u'未成交',u'部分成交'])) & 
                                            (allOrders['vtOrderID'].isin(orderIDList))]
             tempWorkingVolume = sum(tempWorkingOrders.totalVolume)
-        else:
-            tempWorkingVolume = 0
 
         ## =============================================================================
         if self.tradingStartSplit:
-            remainingMinute = (self.tradingOpenMinute2 - datetime.now().minute) / (self.randomNo / 60.0)
-            tempPriceType = 'best'
+            remainingMinute = (self.tradingOpenMinute2 - m) / (self.randomNo / 60.0)
+            tempPriceType = 'last'
             tempAddTick = -1
             tempDiscount = 0.0
         elif self.tradingStart:
             remainingMinute = 1
             tempPriceType = 'last'
-            tempAddTick = +1
+            tempAddTick = +2
             tempDiscount = 0.0
         elif self.tradingBetween:
-            remainingMinute = (self.tradingCloseMinute2-1 - datetime.now().minute) / (self.randomNo / 60.0)
+            remainingMinute = (self.tradingCloseMinute2-1 - m) / (self.randomNo / 60.0)
             tempPriceType = priceType
             tempAddTick = addTick
             tempDiscount = 0.0
@@ -948,12 +953,10 @@ class CtaTemplate(object):
         cdef str vtOrderID
 
         for k in tradingOrderList:
-            
             # --------------------------------------------------------
             # 是否需要在 tradingStart 的时候开始追单 
             if ( self.tradingStart and 
-                not (datetime.now().hour in self.tradingOpenHour and 
-                     datetime.now().minute < self.tradingOpenMinute2) ):
+                not (h in self.tradingOpenHour and m < self.tradingOpenMinute2) ):
                 if len(tempWorkingOrders) != 0:
                     for vtOrderID in tradingOrders[k]['vtOrderIDList']:
                         if vtOrderID in tempWorkingOrders.vtOrderID.values:
@@ -999,7 +1002,6 @@ class CtaTemplate(object):
                          int addTick = 0, 
                          float discount = 0.0):
         """发送单个合约的订单"""
-        ## ---------------------------------------------------------------------
         cdef:
             str id
             float tempPriceTick
@@ -1106,7 +1108,7 @@ class CtaTemplate(object):
         ## =====================================================================
         ## 启动尾盘交易
         ## =====================================================================
-        if ( (h in [8,20] and m >= 59 and s >= 45) or 
+        if ( (h in [8,20] and m >= 59 and s >= 55) or 
              (h in [21,22,23,0,1,2]) or 
              (9 <= h <= (self.tradingCloseHour-1)) or 
              (h == self.tradingCloseHour and m < self.tradingCloseMinute1-10) ):
