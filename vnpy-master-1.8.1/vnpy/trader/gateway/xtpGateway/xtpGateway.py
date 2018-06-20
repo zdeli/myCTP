@@ -104,14 +104,23 @@ class XtpGateway(VtGateway):
         
         self.qryEnabled = False         # 是否要启动循环查询
         
-        self.fileName = self.gatewayName + '_connect.json'
-        self.filePath = getJsonPath(self.fileName, __file__) 
-        
+        ## ------------------------------------------------------   
+        self.XTPConnectFile = self.gatewayName + '_connect.json'
+        path = os.path.normpath(
+            os.path.join(
+                os.path.dirname(__file__),
+                '..', '..', '..', '..')
+            )
+        self.XTPConnectPath = os.path.join(path,
+            'trading', 'account', 'xtp', self.XTPConnectFile)
+        ## ------------------------------------------------------   
+
     #----------------------------------------------------------------------
-    def connect(self):
+    def connect(self, accountID):
         """连接"""
         try:
-            f = file(self.filePath)
+            # f = file(self.filePath)
+            f = file(self.XTPConnectPath)
         except IOError:
             log = VtLogData()
             log.gatewayName = self.gatewayName
@@ -120,7 +129,8 @@ class XtpGateway(VtGateway):
             return
         
         # 解析json文件
-        setting = json.load(f)  
+        info = json.load(f)
+        setting = info[accountID]
         try:
             userID = str(setting['userID'])
             password = str(setting['password'])
