@@ -220,8 +220,9 @@ class BasicMonitor(QtWidgets.QTableWidget):
         self.eventType = ''
         
         # 列宽调整状态（只在第一次更新数据时调整一次列宽）
-        self.columnResized = False
-        
+        # self.columnResized = False
+        self.columnResized = True
+
         # 字体
         self.font = None
         
@@ -755,7 +756,8 @@ class TradingWidget(QtWidgets.QFrame):
         self.comboOffset.addItems(self.offsetList)
 
         self.spinPrice = QtWidgets.QDoubleSpinBox()
-        self.spinPrice.setDecimals(globalSetting.get('maxDecimal', 4))
+        # self.spinPrice.setDecimals(4)
+        self.spinPrice.setDecimals(3)
         self.spinPrice.setMinimum(0)
         self.spinPrice.setMaximum(1000000)
 
