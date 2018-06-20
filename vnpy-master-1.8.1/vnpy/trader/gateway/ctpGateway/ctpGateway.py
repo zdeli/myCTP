@@ -101,14 +101,22 @@ class CtpGateway(VtGateway):
         
         self.qryEnabled = False         # 循环查询
         
-        self.fileName = self.gatewayName + '_connect.json'
-        self.filePath = getJsonPath(self.fileName, __file__)        
-        
+        ## ------------------------------------------------------   
+        self.CTPConnectFile = self.gatewayName + '_connect.json'
+        path = os.path.normpath(
+            os.path.join(
+                os.path.dirname(__file__),
+                '..', '..', '..', '..')
+            )
+        self.CTPConnectPath = os.path.join(path,
+            'trading', 'account', 'ctp', self.CTPConnectFile)
+        ## ------------------------------------------------------   
+
     #----------------------------------------------------------------------
-    def connect(self):
+    def connect(self, accountID):
         """连接"""
         try:
-            f = file(self.filePath)
+            f = file(self.CTPConnectPath)
         except IOError:
             log = VtLogData()
             log.gatewayName = self.gatewayName
@@ -117,7 +125,9 @@ class CtpGateway(VtGateway):
             return
         
         # 解析json文件
-        setting = json.load(f)
+        info = json.load(f)
+        setting = info[accountID]
+
         try:
             userID = str(setting['userID'])
             password = str(setting['password'])
