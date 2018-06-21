@@ -241,77 +241,77 @@ class OIStrategy(CtaTemplate):
 
 
         ## =====================================================================
-        ## 涨跌停的订单
-        tempWinner = vtFunction.dbMySQLQuery(
-            self.ctaEngine.mainEngine.dataBase,
-            """
-            SELECT *
-            FROM workingInfo
-            WHERE strategyID = '%s'
-            AND TradingDay = '%s'
-            AND stage = 'winner'
-            """ %(self.strategyID, self.ctaEngine.tradingDate))
-        if len(tempWinner):
-            for i in xrange(len(tempWinner)):
-                self.vtOrderIDListTempWinner.extend(ast.literal_eval(tempWinner.ix[i,'vtOrderIDList']))
+        ## 止盈止损的订单
+        # tempWinner = vtFunction.dbMySQLQuery(
+        #     self.ctaEngine.mainEngine.dataBase,
+        #     """
+        #     SELECT *
+        #     FROM workingInfo
+        #     WHERE strategyID = '%s'
+        #     AND TradingDay = '%s'
+        #     AND stage = 'winner'
+        #     """ %(self.strategyID, self.ctaEngine.tradingDate))
+        # if len(tempWinner):
+        #     for i in xrange(len(tempWinner)):
+        #         self.vtOrderIDListTempWinner.extend(ast.literal_eval(tempWinner.ix[i,'vtOrderIDList']))
         
-        ## =====================================================================
-        mysqlpositionInfo = vtFunction.dbMySQLQuery(
-            self.ctaEngine.mainEngine.dataBase,
-            """
-            SELECT *
-            FROM positionInfo
-            WHERE strategyID = '%s'
-            """ %(self.strategyID))
+        # ## =====================================================================
+        # mysqlpositionInfo = vtFunction.dbMySQLQuery(
+        #     self.ctaEngine.mainEngine.dataBase,
+        #     """
+        #     SELECT *
+        #     FROM positionInfo
+        #     WHERE strategyID = '%s'
+        #     """ %(self.strategyID))
         
-        if len(mysqlpositionInfo):
-            for i in xrange(len(mysqlpositionInfo)):
-                ## -------------------------------------------------
-                if mysqlpositionInfo.at[i, 'direction'] == 'long':
-                    tempDirection = 'sell'
-                elif mysqlpositionInfo.at[i, 'direction'] == 'short':
-                    tempDirection = 'cover'
-                ## -------------------------------------------------
-                id = mysqlpositionInfo.at[i, 'InstrumentID']
-                tempKey = id + '-' + tempDirection
-                x = tempWinner.loc[tempWinner.vtSymbol == id]
+        # if len(mysqlpositionInfo):
+        #     for i in xrange(len(mysqlpositionInfo)):
+        #         ## -------------------------------------------------
+        #         if mysqlpositionInfo.at[i, 'direction'] == 'long':
+        #             tempDirection = 'sell'
+        #         elif mysqlpositionInfo.at[i, 'direction'] == 'short':
+        #             tempDirection = 'cover'
+        #         ## -------------------------------------------------
+        #         id = mysqlpositionInfo.at[i, 'InstrumentID']
+        #         tempKey = id + '-' + tempDirection
+        #         x = tempWinner.loc[tempWinner.vtSymbol == id]
 
-                if len(x):
-                    ## 如果已经有了下单的
-                    y = mysqlpositionInfo.at[i, 'volume'] - int(x['volume'].values)
-                    if y > 0:
-                        tempVolume = y
-                    else:
-                        tempVolume = 0
-                else:
-                    ##　如果没有下单
-                    tempVolume = mysqlpositionInfo.at[i, 'volume']
+        #         if len(x):
+        #             ## 如果已经有了下单的
+        #             y = mysqlpositionInfo.at[i, 'volume'] - int(x['volume'].values)
+        #             if y > 0:
+        #                 tempVolume = y
+        #             else:
+        #                 tempVolume = 0
+        #         else:
+        #             ##　如果没有下单
+        #             tempVolume = mysqlpositionInfo.at[i, 'volume']
 
-                if tempVolume:
-                    self.tradingOrdersWinner[tempKey] = {
-                            'vtSymbol'      : id,
-                            'direction'     : tempDirection,
-                            'volume'        : tempVolume,
-                            'TradingDay'    : mysqlpositionInfo.at[i, 'TradingDay'],
-                            'vtOrderIDList' : []
-                            }
+        #         if tempVolume:
+        #             self.tradingOrdersWinner[tempKey] = {
+        #                     'vtSymbol'      : id,
+        #                     'direction'     : tempDirection,
+        #                     'volume'        : tempVolume,
+        #                     'TradingDay'    : mysqlpositionInfo.at[i, 'TradingDay'],
+        #                     'vtOrderIDList' : []
+        #                     }
         ## =====================================================================
 
         ## =====================================================================
         ## 止盈平仓参数
-        self.winnerParam = {}
-        tradingSignal = vtFunction.fetchMySQL(
-            db = self.accountID,
-            query = """select InstrumentID as vtSymbol,direction,volume,param 
-                       from tradingSignal 
-                       where TradingDay = %s and strategyID = '%s'""" 
-                       %(self.ctaEngine.lastTradingDay, self.strategyID))
-        if len(tradingSignal):
-            for i in xrange(len(tradingSignal)):
-                k = tradingSignal.at[i, 'vtSymbol']
-                self.winnerParam[k] = dict(tradingSignal.iloc[i])
-                self.winnerParam[k]['param'] = float(self.winnerParam[k]['param'])
-                self.winnerParam[k]['priceTick'] = self.ctaEngine.tickInfo[k]['priceTick']
+        # self.winnerParam = {}
+        # tradingSignal = vtFunction.fetchMySQL(
+        #     db = self.accountID,
+        #     query = """select InstrumentID as vtSymbol,direction,volume,param 
+        #                from tradingSignal 
+        #                where TradingDay = %s and strategyID = '%s'""" 
+        #                %(self.ctaEngine.lastTradingDay, self.strategyID))
+        # if len(tradingSignal):
+        #     for i in xrange(len(tradingSignal)):
+        #         k = tradingSignal.at[i, 'vtSymbol']
+        #         self.winnerParam[k] = dict(tradingSignal.iloc[i])
+        #         self.winnerParam[k]['param'] = float(self.winnerParam[k]['param'])
+        #         self.winnerParam[k]['priceTick'] = self.ctaEngine.tickInfo[k]['priceTick']
         ## =====================================================================
 
         ########################################################################
@@ -398,7 +398,6 @@ class OIStrategy(CtaTemplate):
         cdef:
             char* id = tick.vtSymbol
             int i
-            char* x
             list vtSymbolOpen
             str tempPriceType
             int h = datetime.now().hour
@@ -410,48 +409,54 @@ class OIStrategy(CtaTemplate):
                         for k in self.tradingOrdersOpen.keys()]):
             ####################################################################
 
-            ## -----------------------------------------------------------------
-            ## 第一个数据进来就直接下单，不用再等后面的数据
-            if self.tradingStartCounter <= 30:
-                self.tradingStartCounter += 1
-                ## ---------------------------------------------------------------------------------
-                vtSymbolOpen = [j for j in self.ctaEngine.lastTickDict.keys()
-                                   if j in [self.tradingOrdersOpen[k]['vtSymbol'] 
-                                             for k in self.tradingOrdersOpen.keys()]]
-                ## ---------------------------------------------------------------------------------
-                for i in xrange(self.realOrderLevel):
-                    for x in vtSymbolOpen:
-                        ## -----------------------------------------------------
-                        exchange = self.ctaEngine.lastTickDict[x]['exchange']
-                        if not self.ctaEngine.exchangeTradingStatus[exchange]:
-                            self.writeCtaLog(u'%s 未到交易时间.' %exchange,
-                                             logLevel = ERROR) 
-                            continue
-                        ## -----------------------------------------------------
-                        self.prepareTradingOrderSplit(
-                            vtSymbol      = x,
-                            tradingOrders = self.tradingOrdersOpen,
-                            orderIDList   = self.vtOrderIDListOpen,
-                            priceType     = 'limit',
-                            discount      = self.openDiscount)
+            if self.accountID not in ['SimNow_YY']:
+                ## -----------------------------------------------------------------
+                ## 第一个数据进来就直接下单，不用再等后面的数据
+                if self.tradingStartCounter <= 30:
+                    self.tradingStartCounter += 1
+                    ## ---------------------------------------------------------------------------------
+                    vtSymbolOpen = [j for j in self.ctaEngine.lastTickDict.keys()
+                        if (self.ctaEngine.exchangeTradingStatus[self.ctaEngine.lastTickDict[j]['exchange']] and 
+                            j in [self.tradingOrdersOpen[k]['vtSymbol'] 
+                            for k in self.tradingOrdersOpen.keys()])]
+                    if not vtSymbolOpen:
+                        return
+                    ## ---------------------------------------------------------------------------------
+                    for i in xrange(self.realOrderLevel):
+                        for x in vtSymbolOpen:
+                            ## -----------------------------------------------------
+                            # exchange = self.ctaEngine.lastTickDict[x]['exchange']
+                            # if not self.ctaEngine.exchangeTradingStatus[exchange]:
+                            #     self.writeCtaLog(u'%s 未到交易时间.' %exchange,
+                            #                      logLevel = ERROR) 
+                            #     continue
+                            ## -----------------------------------------------------
+                            self.prepareTradingOrderSplit(
+                                vtSymbol      = x,
+                                tradingOrders = self.tradingOrdersOpen,
+                                orderIDList   = self.vtOrderIDListOpen,
+                                priceType     = 'limit',
+                                discount      = self.openDiscount)
+                else:
+                    self.prepareTradingOrderSplit(
+                        vtSymbol      = id,
+                        tradingOrders = self.tradingOrdersOpen,
+                        orderIDList   = self.vtOrderIDListOpen,
+                        priceType     = 'limit',
+                        discount      = self.openDiscount)
+                ## -----------------------------------------------------------------
             else:
-                self.prepareTradingOrderSplit(
-                    vtSymbol      = id,
-                    tradingOrders = self.tradingOrdersOpen,
-                    orderIDList   = self.vtOrderIDListOpen,
-                    priceType     = 'limit',
-                    discount      = self.openDiscount)
-            ## -----------------------------------------------------------------
-           
-            # if self.tradingStartSplit:            
-            #     tempOrderIDList = self.vtOrderIDListOpenSplit
-            # elif self.tradingStart:
-            #     tempOrderIDList = self.vtOrderIDListOpen
+                ## ------------------------------------------------
+                if self.tradingStartSplit:            
+                    tempOrderIDList = self.vtOrderIDListOpenSplit
+                elif self.tradingStart:
+                    tempOrderIDList = self.vtOrderIDListOpen
 
-            # self.prepareSplit(
-            #     vtSymbol = id,
-            #     tradingOrders = self.tradingOrdersOpen,
-            #     orderIDList = tempOrderIDList)
+                self.prepareSplit(
+                    vtSymbol = id,
+                    tradingOrders = self.tradingOrdersOpen,
+                    orderIDList = tempOrderIDList)
+                ## ------------------------------------------------
 
         ## =====================================================================
 
@@ -461,29 +466,33 @@ class OIStrategy(CtaTemplate):
                         for k in self.tradingOrdersClose.keys()]):
             if self.tradingBetween:
                 ## ----------------------------
-                if (id[0:2] not in ['bu','cs','pb','c1','a1','b1',
-                                    'v1','y1','l1','p1',
+                if (self.ctaEngine.mainEngine.initialCapital <= 0.5e7 and
+                    id[0:2] not in ['bu','cs','pb','c1','a1','b1',
+                                    'v1','y1','l1','p1','i1',
                                     'FG','RM','OI','SM','SR','SF'] and 
                     m < self.tradingCloseMinute2-3):
                     tempPriceType = 'best'
-                    tempAddTick   = -1
                 else:
                     tempPriceType = 'last'
-                    tempAddTick   = 0
                 ## ----------------------------
-                self.prepareTradingOrderSplit(
-                    vtSymbol      = id,
-                    tradingOrders = self.tradingOrdersClose,
-                    orderIDList   = self.vtOrderIDListClose,
-                    priceType     = tempPriceType,
-                    addTick       = self.closeAddTick + tempAddTick)
-                ## ----------------------------
-                # self.prepareSplit(
-                #     vtSymbol      = id,
-                #     tradingOrders = self.tradingOrdersClose,
-                #     orderIDList   = self.vtOrderIDListClose,
-                #     priceType     = tempPriceType,
-                #     addTick       = self.closeAddTick + tempAddTick)
+                if self.accountID not in ['SimNow_YY']:
+                    ## -----------------------------------------
+                    self.prepareTradingOrderSplit(
+                        vtSymbol      = id,
+                        tradingOrders = self.tradingOrdersClose,
+                        orderIDList   = self.vtOrderIDListClose,
+                        priceType     = tempPriceType,
+                        addTick       = self.closeAddTick)
+                    ## -----------------------------------------
+                else:
+                    ## -----------------------------------------
+                    self.prepareSplit(
+                        vtSymbol      = id,
+                        tradingOrders = self.tradingOrdersClose,
+                        orderIDList   = self.vtOrderIDListClose,
+                        priceType     = tempPriceType,
+                        addTick       = self.closeAddTick)
+                    ## -----------------------------------------
             elif self.tradingEnd:
                 self.prepareTradingOrder(
                     vtSymbol      = id,
@@ -754,36 +763,40 @@ class OIStrategy(CtaTemplate):
                         ## ---------------------------------------------------------
                         ## =============================================================
 
-                elif self.accountID in self.WINNER_STRATEGY:
-                    ## =============================================================
-                    ## 止盈平仓单
-                    ## -------------------------------------------------------------
-                    if tempKey in self.tradingOrdersWinner.keys():
-                        self.tradingOrdersWinner[tempKey]['volume'] += self.stratTrade['volume']
-                    else:
-                        ## ---------------------------------------------------------
-                        ## 生成 tradingOrdersWinner
-                        self.tradingOrdersWinner[tempKey] = {
-                                'vtSymbol'      : vtSymbol,
-                                'direction'     : tempDirection,
-                                'volume'        : self.stratTrade['volume'],
-                                'TradingDay'    : self.stratTrade['TradingDay'],
-                                'vtOrderIDList' : []
-                        }
-                        ## ---------------------------------------------------------
-                    ## =============================================================
+                # elif self.accountID in self.WINNER_STRATEGY:
+                #     ## =============================================================
+                #     ## 止盈平仓单
+                #     ## -------------------------------------------------------------
+                #     if tempKey in self.tradingOrdersWinner.keys():
+                #         self.tradingOrdersWinner[tempKey]['volume'] += self.stratTrade['volume']
+                #     else:
+                #         ## ---------------------------------------------------------
+                #         ## 生成 tradingOrdersWinner
+                #         self.tradingOrdersWinner[tempKey] = {
+                #                 'vtSymbol'      : vtSymbol,
+                #                 'direction'     : tempDirection,
+                #                 'volume'        : self.stratTrade['volume'],
+                #                 'TradingDay'    : self.stratTrade['TradingDay'],
+                #                 'vtOrderIDList' : []
+                #         }
+                #         ## ---------------------------------------------------------
+                #     ## =============================================================
             ## =================================================================
 
         elif self.stratTrade['offset'] in [u'平仓', u'平昨', u'平今']:
             ## -----------------------------------------------------------------
             ## 平仓只有在以下两个情况才处理
             ## 因为 failedInfo 已经预先处理过了
+            # if vtOrderID in list(set(self.vtOrderIDListClose) |
+            #                    set(self.vtOrderIDListUpperLower) |
+            #                    set(self.vtOrderIDListUpperLowerCum) |
+            #                    set(self.vtOrderIDListUpperLowerTempCum) |
+            #                    set(self.vtOrderIDListWinner) |
+            #                    set(self.vtOrderIDListTempWinner)):
             if vtOrderID in list(set(self.vtOrderIDListClose) |
                                set(self.vtOrderIDListUpperLower) |
                                set(self.vtOrderIDListUpperLowerCum) |
-                               set(self.vtOrderIDListUpperLowerTempCum) |
-                               set(self.vtOrderIDListWinner) |
-                               set(self.vtOrderIDListTempWinner)):
+                               set(self.vtOrderIDListUpperLowerTempCum)):
                 self.processOffsetClose(self.stratTrade)
             ## -----------------------------------------------------------------
 
@@ -863,8 +876,8 @@ class OIStrategy(CtaTemplate):
         if (m % 5 == 0 and 10 <= s <= 30 and s % 10 == 0):
             self.updateOrderInfo()
             ## ---------------------------------------
-            if self.accountID in self.WINNER_STRATEGY:
-                self.updateLastTickInfo()
+            # if self.accountID in self.WINNER_STRATEGY:
+            #     self.updateLastTickInfo()
             ## ---------------------------------------
             
             if self.tradingStart:
@@ -873,9 +886,9 @@ class OIStrategy(CtaTemplate):
                 ## UpperLowerCum
                 self.updateWorkingInfo(self.tradingOrdersUpperLowerCum, 'ul')
 
-                if self.accountID in self.WINNER_STRATEGY:
-                    ## Winner/Loser
-                    self.updateWorkingInfo(self.tradingOrdersWinner, 'winner')
+                # if self.accountID in self.WINNER_STRATEGY:
+                #     ## Winner/Loser
+                #     self.updateWorkingInfo(self.tradingOrdersWinner, 'winner')
 
             if (h == 15 and self.trading):
                 self.updateFailedInfo(
