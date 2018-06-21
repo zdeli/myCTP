@@ -3,10 +3,9 @@
 import psutil
 import traceback
 
-from vnpy.trader.vtFunction import loadIconPath
 from vnpy.trader.vtGlobal import globalSetting
 from vnpy.trader.uiBasicWidget import *
-
+from vnpy.trader.vtFunction import loadIconPath, dbMySQLConnect
 
 ########################################################################
 class MainWindow(QtWidgets.QMainWindow):
@@ -16,6 +15,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     #----------------------------------------------------------------------
     def __init__(self, mainEngine, eventEngine):
+        global globalSetting
         """Constructor"""          
         super(MainWindow, self).__init__()
         
@@ -36,7 +36,7 @@ class MainWindow(QtWidgets.QMainWindow):
     #----------------------------------------------------------------------
     def initUi(self):
         """初始化界面"""
-        self.setWindowTitle('VnTrader')
+        self.setWindowTitle(globalSetting.accountID)
         self.initCentral()
         self.initMenu()
         self.initStatusBar()
@@ -104,7 +104,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.addConnectAction(sysMenu, d['gatewayName'], d['gatewayDisplayName'])
         
         sysMenu.addSeparator()
-        sysMenu.addAction(self.createAction(vtText.CONNECT_DATABASE, self.mainEngine.dbConnect, loadIconPath('database.ico')))
+        sysMenu.addAction(self.createAction(vtText.CONNECT_DATABASE, dbMySQLConnect, loadIconPath('database.ico')))
         sysMenu.addSeparator()
         sysMenu.addAction(self.createAction(vtText.EXIT, self.close, loadIconPath('exit.ico')))
         
@@ -115,7 +115,7 @@ class MainWindow(QtWidgets.QMainWindow):
             # 如果没有应用界面，则不添加菜单按钮
             if not appDetail['appWidget']:
                 continue
-            
+
             function = self.createOpenAppFunction(appDetail)
             action = self.createAction(appDetail['appDisplayName'], function, loadIconPath(appDetail['appIco']))
             appMenu.addAction(action)
@@ -140,7 +140,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.statusLabel.setText(self.getCpuMemory())
         
         self.sbCount = 0
-        self.sbTrigger = 10     # 10秒刷新一次
+        self.sbTrigger = 10   # 10秒刷新一次
         self.signalStatusBar.connect(self.updateStatusBar)
         self.eventEngine.register(EVENT_TIMER, self.signalStatusBar.emit)
         
@@ -158,7 +158,10 @@ class MainWindow(QtWidgets.QMainWindow):
         """获取CPU和内存状态信息"""
         cpuPercent = psutil.cpu_percent()
         memoryPercent = psutil.virtual_memory().percent
-        return vtText.CPU_MEMORY_INFO.format(cpu=cpuPercent, memory=memoryPercent)
+        return vtText.SYSTEM_INFO.format(currTime  = datetime.now().strftime("%H:%M:%S"), 
+                                         cpu       = cpuPercent, 
+                                         memory    = memoryPercent, 
+                                         accountID = globalSetting.accountID)     
         
     #----------------------------------------------------------------------
     def addConnectAction(self, menu, gatewayName, displayName=''):
@@ -217,7 +220,7 @@ class MainWindow(QtWidgets.QMainWindow):
         except KeyError:
             self.widgetDict['aboutW'] = AboutWidget(self)
             self.widgetDict['aboutW'].show()
-    
+
     #----------------------------------------------------------------------
     def openContract(self):
         """打开合约查询"""
@@ -307,6 +310,7 @@ class AboutWidget(QtWidgets.QDialog):
 
     #----------------------------------------------------------------------
     def __init__(self, parent=None):
+        global globalSetting
         """Constructor"""
         super(AboutWidget, self).__init__(parent)
 
@@ -336,4 +340,3 @@ class AboutWidget(QtWidgets.QDialog):
         vbox.addWidget(label)
 
         self.setLayout(vbox)
-    
