@@ -106,8 +106,8 @@ cdef class CtaEngine(object):
         ## 交易所开盘状态确定
         self.exchangeTradingStatus = {
             'DCE'  : False,
-            'SHFE' : False,
-            'CZCE' : False,
+            'SHFE' : True,
+            'CZCE' : True,
             'INE'  : False}
         ## ----------------------------------------
 
@@ -149,7 +149,7 @@ cdef class CtaEngine(object):
                 query = 'select * from lastTickInfo where TradingDay = %s' %self.tradingDay)
             if len(df):
                 df.rename(columns = {'updateTime':'datetime'}, inplace = True)
-                for i in range(len(df)):
+                for i in xrange(len(df)):
                     self.lastTickDict[df.at[i, 'vtSymbol']] = dict(df.ix[i])
         except:
             self.writeCtaLog(u'没有 lastTickInfo 数据')
@@ -436,8 +436,12 @@ cdef class CtaEngine(object):
         # self.processStopOrder(tick)
         ## ---------------------------------------------------------------------
         ## 判断交易所是不是已经开盘了
-        if self.exchangeTradingContinuous:
-            self.exchangeTradingStatus[tick.exchange] = True
+        if (self.exchangeTradingContinuous and 
+            not self.exchangeTradingStatus[tick.exchange]):
+            if ( (datetime.now().hour in [8,9] and tick.time >= "09:00:00") or
+                 (datetime.now().hour in [20,21] and tick.time >= "21:00:00") or 
+                 datetime.now().hour not in [8,9,20,21]):
+                self.exchangeTradingStatus[tick.exchange] = True
         ## ---------------------------------------------------------------------
         # tick时间可能出现异常数据，使用try...except实现捕捉和过滤
         try:
@@ -546,7 +550,7 @@ cdef class CtaEngine(object):
         ## =====================================================================
         ## 启动尾盘交易
         ## =====================================================================
-        if ( (h in [8,20] and m >= 59 and s >= 55) or 
+        if ( (h in [8,20] and m == 59 and s >= 58) or 
              (h in [21,22,23,0,1,2]) or 
              (9 <= h <= 15) ):
             self.exchangeTradingContinuous = True
