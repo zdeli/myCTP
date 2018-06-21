@@ -36,15 +36,23 @@ SESSION_ID = u'会话编号'
 POSITION = u'持仓量'
 YD_POSITION = u'昨持仓'
 FROZEN = u'冻结量'
+SIZE = u'合约乘数'
+VALUE = u'合约价值'
 POSITION_PROFIT = u'持仓盈亏'
 
 ACCOUNT_ID = u'账户编号'
-PRE_BALANCE = u'昨净值'
-BALANCE = u'净值'
+ACCOUNT_NAME = u'账户名称'
+ACCOUNT_NAV = u'单位净值'
+DEPOSIT = u'入金'
+WITHDRAW = u'出金'
+PRE_BALANCE = u'昨值'
+BALANCE =u'资产'
 AVAILABLE = u'可用'
+LEVERAGE = u'杆杠率'
 COMMISSION = u'手续费'
 MARGIN = u'保证金'
 CLOSE_PROFIT = u'平仓盈亏'
+RETURN_CHGPCT = u'收益波动(%)'
 
 TRADING = u'交易'
 PRICE_TYPE = u'价格类型'
@@ -53,7 +61,21 @@ CURRENCY = u'货币'
 PRODUCT_CLASS = u'产品类型'
 LAST = u'最新'
 SEND_ORDER = u'发单'
+## --------------------------------
+ONE_KEY_CLOSE =  u'一键平仓'
+CONFIRM_ONE_KEY_CLOSE = u'确认一键平仓比例？'
+
 CANCEL_ALL = u'全撤'
+CONFIRM_CANCEL_ALL = u'确认全撤？'
+CLOSE_ALL = u'全平'
+CONFIRM_CLOSE_ALL  = u'确认全平？'
+
+START_ALL = u'启动'
+CONFIRM_START_ALL = u'确定启动？'
+
+STOP_ALL = u'停止'
+CONFIRM_STOP_ALL  = u'确定停止？'
+## --------------------------------
 VT_SYMBOL = u'vt系统代码'
 CONTRACT_SIZE = u'合约大小'
 PRICE_TICK = u'最小价格变动'
@@ -66,6 +88,8 @@ REFRESH = u'刷新'
 SEARCH = u'查询'
 CONTRACT_SEARCH = u'合约查询'
 
+UPPERLIMIT = u'涨停价'
+LOWERLIMIT = u'跌停价'
 
 BID_1 = u'买一'
 BID_2 = u'买二'
@@ -110,7 +134,6 @@ ACCOUNT = u'账户'
 WORKING_ORDER = u'可撤'
 
 SYSTEM = u'系统'
-CONNECT_DATABASE = u'连接数据库'
 EXIT = u'退出'
 APPLICATION = u'功能'
 DATA_RECORDER = u'行情记录'
@@ -128,12 +151,48 @@ EDIT_SETTING = u'编辑配置'
 LOAD = u'读取'
 SAVE = u'保存'
 
-CPU_MEMORY_INFO = u'CPU使用率：{cpu}%   内存使用率：{memory}%'
-CONFIRM_EXIT = u'确认退出？'
+## -----------------------------------------------------------------------------
+CPU_MEMORY_INFO = u'TIME: {currTime}  CPU: {cpu}%   MEM: {memory}%'
+CONFIRM_EXIT    = u'确认退出？'
+SYSTEM_INFO     = u'TIME: {currTime}  CPU: {cpu}%   MEM: {memory}% ||> {accountID} <||'
+## -----------------------------------------------------------------------------
 
+################################################################################
+## william
+## 添加数据库连接情况说明
+## 格式如下:
+## DATABASE_Mongo_
+## DATABASE_MySQL_
+################################################################################
 GATEWAY_NOT_EXIST = u'接口不存在：{gateway}'
-DATABASE_CONNECTING_COMPLETED = u'MongoDB连接成功'
-DATABASE_CONNECTING_FAILED = u'MongoDB连接失败'
-DATA_INSERT_FAILED = u'数据插入失败，MongoDB没有连接'
-DATA_QUERY_FAILED = u'数据查询失败，MongoDB没有连接'
-DATA_UPDATE_FAILED = u'数据更新失败，MongoDB没有连接'
+DATABASE_CONNECTING_COMPLETED       = u'MongoDB连接成功'
+DATABASE_CONNECTING_FAILED          = u'MongoDB连接失败'
+DATA_INSERT_FAILED                  = u'数据插入失败，MongoDB没有连接'
+DATA_QUERY_FAILED                   = u'数据查询失败，MongoDB没有连接'
+DATA_UPDATE_FAILED                  = u'数据更新失败，MongoDB没有连接'
+
+## ------------------------------------
+## william
+CONNECT_DATABASE = u'连接数据库'
+
+CONNECT_DATABASE_Mongo = u'连接 MongoDB'
+CONNECT_DATABASE_MySQL = u'连接 MySQL'
+## ------------------------------------
+
+## Mongo
+DATABASE_Mongo_CONNECTING_COMPLETED = u'MongoDB连接成功'
+DATABASE_Mongo_CONNECTING_FAILED    = u'MongoDB连接失败'
+
+DATA_Mongo_INSERT_FAILED            = u'数据插入失败，MongoDB没有连接'
+DATA_Mongo_QUERY_FAILED             = u'数据查询失败，MongoDB没有连接'
+DATA_Mongo_UPDATE_FAILED            = u'数据更新失败，MongoDB没有连接'
+
+
+## MySQL
+DATABASE_MySQL_CONNECTING_COMPLETED = u'MySQL 连接成功!!!'
+DATABASE_MySQL_CONNECTING_FAILED    = u'MySQL 连接失败!!!'
+
+DATA_MySQL_QUERY_COMPLETED          = u'MySQL 查询成功, 返回数据结果!!!'
+DATA_MySQL_QUERY_FAILED             = u'MySQL 查询失败，没有数据返回!!!'
+
+DATA_MySQL_NOT_CONNECTED            = u'MySQL 查询失败，数据库没有连接!!!'
