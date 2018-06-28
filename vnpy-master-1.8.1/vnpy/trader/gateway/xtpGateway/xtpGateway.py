@@ -1,17 +1,29 @@
 # encoding: UTF-8
+## =============================================================================
+# 重载sys模块，设置默认字符串编码方式为utf8
+try:
+    reload         # Python 2
+except NameError:  # Python 3
+    from importlib import reload
+import sys
+reload(sys)
+sys.setdefaultencoding('utf8')
+## =============================================================================
 
 '''
 vn.xtp的gateway接入
 '''
 
 
-import os
+import os,sys,io
 import json
 from pprint import pprint
 from vnpy.api.xtp import *
 from vnpy.trader.vtGateway import *
 from vnpy.trader.vtFunction import getJsonPath, getTempPath
+from vnpy.trader.vtGlobal import globalSetting
 
+import pandas as pd
 
 # 以下为一些VT类型和XTP类型的映射字典
 # 价格类型映射
@@ -22,12 +34,17 @@ priceTypeMapReverse = {v: k for k, v in priceTypeMap.items()}
 
 # 方向类型映射
 sideMap = {}
-sideMap[(DIRECTION_LONG, OFFSET_NONE)] = 1
-sideMap[(DIRECTION_SHORT, OFFSET_NONE)] = 2
-sideMap[(DIRECTION_LONG, OFFSET_OPEN)] = 3
-sideMap[(DIRECTION_SHORT, OFFSET_OPEN)] = 4
-sideMap[(DIRECTION_LONG, OFFSET_CLOSE)] = 5
-sideMap[(DIRECTION_SHORT, OFFSET_CLOSE)] = 6
+## --------------------------------------------
+# sideMap[(DIRECTION_LONG, OFFSET_NONE)] = 1
+# sideMap[(DIRECTION_SHORT, OFFSET_NONE)] = 2
+# sideMap[(DIRECTION_LONG, OFFSET_OPEN)] = 3
+# sideMap[(DIRECTION_SHORT, OFFSET_OPEN)] = 4
+# sideMap[(DIRECTION_LONG, OFFSET_CLOSE)] = 5
+# sideMap[(DIRECTION_SHORT, OFFSET_CLOSE)] = 6
+## --------------------------------------------
+sideMap[(DIRECTION_LONG, OFFSET_OPEN)] = 1
+sideMap[(DIRECTION_SHORT, OFFSET_CLOSE)] = 2
+
 sideMapReverse = {v: k for k, v in sideMap.items()}
 
 # 交易所类型映射
@@ -261,6 +278,9 @@ class XtpMdApi(QuoteApi):
         self.address = EMPTY_STRING         # 服务器地址
         self.port = EMPTY_INT               # 服务器端口
     
+        self.contractDict  = {}
+
+
     #----------------------------------------------------------------------
     def onDisconnected(self, reason):
         """连接断开"""
@@ -330,9 +350,6 @@ class XtpMdApi(QuoteApi):
         tick.askPrice1, tick.askPrice2, tick.askPrice3, tick.askPrice4, tick.askPrice5 = data['ask'][0:5]
         tick.bidVolume1, tick.bidVolume2, tick.bidVolume3, tick.bidVolume4, tick.bidVolume5 = data['bid_qty'][0:5]
         tick.askVolume1, tick.askVolume2, tick.askVolume3, tick.askVolume4, tick.askVolume5 = data['ask_qty'][0:5] 
-            
-        ## william
-        # pprint(tick.__dict__)
 
         self.gateway.onTick(tick)        
         
@@ -347,24 +364,71 @@ class XtpMdApi(QuoteApi):
             self.gateway.onError(err)
             return
         ## william
-        if data['ticker'] in ['300001','300030','159901','510510',
-                              '000002','000060','600036','600548', 
-                              '159930','510010','510050']:
-            # pprint(data)
-            contract = VtContractData()
-            contract.gatewayName = self.gatewayName
-            
-            contract.symbol = data['ticker']
-            contract.exchange = exchangeMapReverse.get(data['exchange_id'], EXCHANGE_UNKNOWN)
-            contract.vtSymbol = '.'.join([contract.symbol, contract.exchange])
-            
-            contract.name = data['ticker_name'].decode('UTF-8')
-            contract.size = 1
-            contract.priceTick = data['price_tick']
-            contract.productClass = productClassMapReverse.get(data['ticker_type'], PRODUCT_UNKNOWN)
-            
-            self.gateway.onContract(contract)
+        # if data['ticker'] in ['300001','300030','159901','510510',
+        #                       '000002','000060','600036','600548', 
+        #                       '159930','510010','510050']:
+        #    # pprint(data)
+        # pprint(data)
+        contract = VtContractData()
+        contract.gatewayName = self.gatewayName  ## 'XTP'
         
+        contract.symbol = data['ticker']
+        contract.exchange = exchangeMapReverse.get(data['exchange_id'], EXCHANGE_UNKNOWN)
+        contract.vtSymbol = '.'.join([contract.symbol, contract.exchange])
+        contract.name = data['ticker_name'].decode('UTF-8')
+
+        contract.size = 1
+        contract.priceTick = data['price_tick']
+        contract.productClass = productClassMapReverse.get(data['ticker_type'], PRODUCT_UNKNOWN)
+
+        contract.buyUnit = data['buy_qty_unit']
+        contract.sellUnit = data['sell_qty_unit']
+
+        contract.upperLimit = data['upper_limit_price']
+        contract.lowerLimit = data['lower_limit_price']
+
+        self.gateway.onContract(contract)
+        ## =====================================================================
+        ## william
+        ## ---------------------------------------------------------------------
+        self.contractDict[contract.symbol]   = contract
+        ## =====================================================================        
+        if last:
+            dfHeader = ['symbol','name','exchange','gatewayName',
+                        'priceTick','productClass','buyUnit','sellUnit',
+                        'upperLimit','lowerLimit']
+            dfData   = []
+            for k in self.contractDict.keys():
+                temp = self.contractDict[k].__dict__
+                dfData.append([temp[kk] for kk in dfHeader])
+            self.df = pd.DataFrame(dfData, columns = dfHeader)
+            df = self.df
+
+            # reload(sys) # reload 才能调用 setdefaultencoding 方法
+            # sys.setdefaultencoding('utf-8')
+
+            df.to_csv('./temp/ashares.csv', index = False)
+
+            ## =================================================================
+            # if not os.path.exists('./temp/asharesAll.csv'):
+            #     df.to_csv('./temp/asharesAll.csv', index = False)            
+            # try:
+            #     self.dfAll = pd.read_csv('./temp/asharesAll.csv')
+            #     for i in xrange(df.shape[0]):
+            #         if df.at[i,'symbol'] not in self.dfAll.symbol.values:
+            #             self.dfAll = self.dfAll.append(df.loc[i], ignore_index = True)
+            #     self.dfAll.to_csv('./temp/asharesAll.csv', index = False)
+            # except:
+            #     None
+            ## =================================================================
+
+            ## =================================================================
+            # self.writeLog(text.CONTRACT_DATA_RECEIVED)
+            # ## 交易合约信息获取是否成功
+            # globalSetting.LOGIN = True
+            # self.writeLog(u'账户登录成功')
+
+
     #----------------------------------------------------------------------
     def onSubOrderBook(self, data, error, last):
         """"""
@@ -552,7 +616,8 @@ class XtpTdApi(TraderApi):
     def onOrderEvent(self, data, error, session):
         """委托数据回报"""
         orderID = str(data['order_xtp_id'])
-        
+        pprint(data)
+
         if orderID not in self.orderDict:
             # 创建报单数据对象
             order = VtOrderData()
@@ -572,7 +637,7 @@ class XtpTdApi(TraderApi):
             # 开平和方向
             order.direction, order.offset = sideMapReverse.get(data['side'], 
                                                                (DIRECTION_UNKNOWN, OFFSET_UNKNOWN))
-            
+ 
             # 不变的字段
             order.price = data['price']
             order.totalVolume = data['quantity']    
@@ -677,6 +742,7 @@ class XtpTdApi(TraderApi):
     #----------------------------------------------------------------------
     def onQueryPosition(self, data, error, reqid, last, session):
         """查询持仓回报"""
+        # pprint(data)
         pos = VtPositionData()
         pos.gatewayName = self.gatewayName
         
@@ -689,12 +755,18 @@ class XtpTdApi(TraderApi):
         # 方向和持仓冻结数量
         pos.direction = DIRECTION_LONG
         pos.position = data['total_qty']
+        pos.ydPosition = data['yesterday_position']
         pos.frozen = data['total_qty'] - data['sellable_qty']
-        pos.price = data['avg_price']
+        # pos.price = data['avg_price']
+        pos.cost = data['avg_price']
         
         # VT系统持仓名
         pos.vtPositionName = '.'.join([pos.vtSymbol, pos.direction])
         
+        ## ---------------------------------------------------------------------
+        ## william
+        ## ---------------------------------------------------------------------
+
         # 推送
         self.gateway.onPosition(pos)     
         
@@ -706,6 +778,7 @@ class XtpTdApi(TraderApi):
     
         # 账户代码
         account.accountID = self.userID
+        account.accountName = globalSetting.accountName
         account.vtAccountID = '.'.join([self.gatewayName, account.accountID])
     
         # 数值相关
@@ -814,8 +887,10 @@ class XtpTdApi(TraderApi):
         #req['side'] = sideMap.get((orderReq.direction, OFFSET_NONE), 0)
         if orderReq.direction == DIRECTION_LONG:
             req['side'] = 1
-        else:
+        elif orderReq.direction == DIRECTION_SHORT:
             req['side'] = 2
+        else:
+            self.writeLog(u'ASHARES 错误的订单买卖方向')  
 
         # 发出委托
         orderID = str(self.insertOrder(req, self.sessionID))        
