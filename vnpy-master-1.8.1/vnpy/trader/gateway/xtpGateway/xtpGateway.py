@@ -14,16 +14,20 @@ sys.setdefaultencoding('utf8')
 vn.xtp的gateway接入
 '''
 
-
 import os,sys,io
 import json
 from pprint import pprint
+from datetime import datetime, timedelta
+
 from vnpy.api.xtp import *
 from vnpy.trader.vtGateway import *
-from vnpy.trader.vtFunction import getJsonPath, getTempPath
+# from vnpy.trader.vtFunction import getJsonPath, getTempPath
+from vnpy.trader import vtFunction 
 from vnpy.trader.vtGlobal import globalSetting
+from .language import text
 
 import pandas as pd
+from logging import INFO, ERROR
 
 # 以下为一些VT类型和XTP类型的映射字典
 # 价格类型映射
@@ -423,10 +427,11 @@ class XtpMdApi(QuoteApi):
             ## =================================================================
 
             ## =================================================================
-            # self.writeLog(text.CONTRACT_DATA_RECEIVED)
+            self.writeLog(text.CONTRACT_DATA_RECEIVED)
             # ## 交易合约信息获取是否成功
-            # globalSetting.LOGIN = True
-            # self.writeLog(u'账户登录成功')
+            globalSetting.LOGIN = True
+            self.writeLog(text.ACCOUNT_LOGIN)
+            ## =================================================================
 
 
     #----------------------------------------------------------------------
@@ -546,11 +551,12 @@ class XtpMdApi(QuoteApi):
         self.exit()
         
     #----------------------------------------------------------------------
-    def writeLog(self, content):
+    def writeLog(self, content, logLevel = INFO):
         """记录日志"""
         log = VtLogData()
-        log.gatewayName = self.gatewayName
         log.logContent = content
+        log.logLevel = logLevel
+        log.gatewayName = self.gatewayName
         self.gateway.onLog(log)         
 
 
@@ -616,7 +622,7 @@ class XtpTdApi(TraderApi):
     def onOrderEvent(self, data, error, session):
         """委托数据回报"""
         orderID = str(data['order_xtp_id'])
-        pprint(data)
+        # pprint(data)
 
         if orderID not in self.orderDict:
             # 创建报单数据对象
@@ -757,8 +763,7 @@ class XtpTdApi(TraderApi):
         pos.position = data['total_qty']
         pos.ydPosition = data['yesterday_position']
         pos.frozen = data['total_qty'] - data['sellable_qty']
-        # pos.price = data['avg_price']
-        pos.cost = data['avg_price']
+        pos.price = data['avg_price']
         
         # VT系统持仓名
         pos.vtPositionName = '.'.join([pos.vtSymbol, pos.direction])
@@ -890,14 +895,34 @@ class XtpTdApi(TraderApi):
         elif orderReq.direction == DIRECTION_SHORT:
             req['side'] = 2
         else:
-            self.writeLog(u'ASHARES 错误的订单买卖方向')  
+            self.writeLog(u'ASHARES 错误的订单买卖方向', ERROR)  
 
         # 发出委托
-        orderID = str(self.insertOrder(req, self.sessionID))        
+        orderID = str(self.insertOrder(req, self.sessionID))  
         vtOrderID = '.'.join([self.gatewayName, orderID])
+        ## =====================================================================
+        ## william
+        ## orderReq
+        orderReq.orderTime = datetime.now().strftime('%Y%m%d %H:%M:%S.%f')
+        orderReq.orderID = orderID
+        orderReq.vtOrderID = vtOrderID
+        orderReq.status = u'未成交'      
+        ## ---------------------------------------------------------------------
+        tmp = pd.DataFrame([orderReq.__dict__.values()], 
+                            columns = orderReq.__dict__.keys())
+        ## ---------------------------------------------------------------------
+        content = u'下单的详细信息\n%s\nvtOrderID: %s\n%s\n%s\n' %('-'*80,
+            tmp.vtOrderID.values,
+            tmp[['vtSymbol','offset','direction','price',
+                 'volume','orderTime','status']].to_string(index=False),
+            '-'*80)
+        self.writeLog(content)
+        ## --------------------------------------------------------------------- 
 
+        ## --------------------------------------------------------------------- 
         # 返回订单号（字符串），便于某些算法进行动态管理
         return vtOrderID
+        ## --------------------------------------------------------------------- 
     
     #----------------------------------------------------------------------
     def sendCancel(self, cancelOrderReq):
@@ -910,9 +935,10 @@ class XtpTdApi(TraderApi):
         self.exit()
 
     #----------------------------------------------------------------------
-    def writeLog(self, content):
+    def writeLog(self, content, logLevel = INFO):
         """记录日志"""
         log = VtLogData()
-        log.gatewayName = self.gatewayName
         log.logContent = content
-        self.gateway.onLog(log)   
+        log.logLevel = logLevel
+        log.gatewayName = self.gatewayName
+        self.gateway.onLog(log)    
