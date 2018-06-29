@@ -17,9 +17,10 @@ from vnpy.trader.vtGlobal import globalSetting
 from vnpy.trader.vtEvent import *
 from vnpy.trader.vtGateway import *
 from vnpy.trader.language import text
-from vnpy.trader.vtFunction import getTempPath
-
-
+from vnpy.trader import vtFunction
+## -----------------------------------
+import pandas as pd
+## -----------------------------------
 
 ########################################################################
 class MainEngine(object):
@@ -38,6 +39,13 @@ class MainEngine(object):
         # 创建数据引擎
         self.dataEngine = DataEngine(self.eventEngine)
         
+        ## -----------------------------------------
+        ## 是否订阅所有合约
+        self.subscribeAll = False
+        ## 是否打印合约
+        self.printData = False
+        ## ----------------------------------------- 
+               
         # MongoDB数据库相关
         self.dbClient = None    # MongoDB客户端对象
         
@@ -55,6 +63,14 @@ class MainEngine(object):
         # 日志引擎实例
         self.logEngine = None
         self.initLogEngine()
+
+        ## -------------------------------
+        ## 发送邮件预警
+        self.sendMailTime = datetime.now()
+        self.sendMailStatus = False
+        self.sendMailContent = u''
+        self.sendMailCounter = 0 
+        ## -------------------------------
 
     #----------------------------------------------------------------------
     def addGateway(self, gatewayModule):
@@ -107,15 +123,13 @@ class MainEngine(object):
             return None
         
     #----------------------------------------------------------------------
-    def connect(self, gatewayName):
+    def connect(self, gatewayName, accountID):
         """连接特定名称的接口"""
         gateway = self.getGateway(gatewayName)
         
         if gateway:
-            gateway.connect()
+            gateway.connect(accountID)
             
-            # 接口连接后自动执行数据库连接的任务
-            # self.dbConnect()        
    
     #----------------------------------------------------------------------
     def subscribe(self, subscribeReq, gatewayName):
@@ -136,7 +150,8 @@ class MainEngine(object):
         
         if gateway:
             vtOrderID = gateway.sendOrder(orderReq)
-            self.dataEngine.updateOrderReq(orderReq, vtOrderID)     # 更新发出的委托请求到数据引擎中
+            # 更新发出的委托请求到数据引擎中
+            self.dataEngine.updateOrderReq(orderReq, vtOrderID)     
             return vtOrderID
         else:
             return ''
@@ -183,11 +198,13 @@ class MainEngine(object):
         self.dataEngine.saveContracts()
     
     #----------------------------------------------------------------------
-    def writeLog(self, content):
+    def writeLog(self, content, logLevel = logging.INFO, gatewayName = 'MAIN_ENGINE'):
         """快速发出日志事件"""
         log = VtLogData()
         log.logContent = content
-        log.gatewayName = 'MAIN_ENGINE'
+        log.logLevel = logLevel
+        log.gatewayName = gatewayName
+
         event = Event(type_=EVENT_LOG)
         event.dict_['data'] = log
         self.eventEngine.put(event)        
@@ -199,7 +216,7 @@ class MainEngine(object):
             # 读取MongoDB的设置
             try:
                 # 设置MongoDB操作的超时时间为0.5秒
-                self.dbClient = MongoClient(globalSetting['mongoHost'], globalSetting['mongoPort'], connectTimeoutMS=500)
+                self.dbClient = MongoClient(globalSetting().vtSetting['mongoHost'], globalSetting().vtSetting['mongoPort'], connectTimeoutMS=500)
                 
                 # 调用server_info查询服务器状态，防止服务器异常并未连接成功
                 self.dbClient.server_info()
@@ -207,7 +224,7 @@ class MainEngine(object):
                 self.writeLog(text.DATABASE_CONNECTING_COMPLETED)
                 
                 # 如果启动日志记录，则注册日志事件监听函数
-                if globalSetting['mongoLogging']:
+                if globalSetting().vtSetting['mongoLogging']:
                     self.eventEngine.register(EVENT_LOG, self.dbLogging)
                     
             except ConnectionFailure:
@@ -298,6 +315,11 @@ class MainEngine(object):
     def getAllOrders(self):
         """查询所有委托"""
         return self.dataEngine.getAllOrders()
+
+    #----------------------------------------------------------------------
+    def getAllOrdersDataFrame(self):
+        """查询所有委托"""
+        return self.dataEngine.getAllOrdersDataFrame()
     
     #----------------------------------------------------------------------
     def getAllTrades(self):
@@ -337,7 +359,7 @@ class MainEngine(object):
     #----------------------------------------------------------------------
     def initLogEngine(self):
         """初始化日志引擎"""
-        if not globalSetting["logActive"]:
+        if not globalSetting().vtSetting["logActive"]:
             return
         
         # 创建引擎
@@ -351,14 +373,14 @@ class MainEngine(object):
             "error": LogEngine.LEVEL_ERROR,
             "critical": LogEngine.LEVEL_CRITICAL,
         }
-        level = levelDict.get(globalSetting["logLevel"], LogEngine.LEVEL_CRITICAL)
+        level = levelDict.get(globalSetting().vtSetting["logLevel"], LogEngine.LEVEL_CRITICAL)
         self.logEngine.setLogLevel(level)
         
         # 设置输出
-        if globalSetting['logConsole']:
+        if globalSetting().vtSetting['logConsole']:
             self.logEngine.addConsoleHandler()
             
-        if globalSetting['logFile']:
+        if globalSetting().vtSetting['logFile']:
             self.logEngine.addFileHandler()
             
         # 注册事件监听
@@ -390,7 +412,7 @@ class MainEngine(object):
 class DataEngine(object):
     """数据引擎"""
     contractFileName = 'ContractData.vt'
-    contractFilePath = getTempPath(contractFileName)
+    contractFilePath = vtFunction.getTempPath(contractFileName)
     
     FINISHED_STATUS = [STATUS_ALLTRADED, STATUS_REJECTED, STATUS_CANCELLED]
 
@@ -412,7 +434,7 @@ class DataEngine(object):
         
         # 持仓细节相关
         self.detailDict = {}                                # vtSymbol:PositionDetail
-        self.tdPenaltyList = globalSetting['tdPenalty']     # 平今手续费惩罚的产品代码列表
+        self.tdPenaltyList = globalSetting().vtSetting['tdPenalty']     # 平今手续费惩罚的产品代码列表
         
         # 读取保存在硬盘的合约数据
         self.loadContracts()
@@ -467,12 +489,33 @@ class DataEngine(object):
     def processTradeEvent(self, event):
         """处理成交事件"""
         trade = event.dict_['data']
-        
-        self.tradeDict[trade.vtTradeID] = trade
+
+        ## ---------------------------------------------------------------------
+        trade.status = self.orderDict[trade.vtOrderID].status
+        trade.orderTime   = self.orderDict[trade.vtOrderID].orderTime
+        trade.totalVolume = self.orderDict[trade.vtOrderID].totalVolume
+        trade.tradedVolume = self.orderDict[trade.vtOrderID].tradedVolume
+        self.tradeDict[trade.vtOrderID] = trade
+        self.orderDict[trade.vtOrderID].tradeTime = trade.tradeTime
+        ## ---------------------------------------------------------------------
     
         # 更新到持仓细节中
         detail = self.getPositionDetail(trade.vtSymbol)
         detail.updateTrade(trade)        
+
+        ## ---------------------------------------------------------------------
+        ## 成交订单
+        tmp = pd.DataFrame([trade.__dict__.values()], columns = trade.__dict__.keys())
+        ## ---------------------------------------------------------------------
+        if (globalSetting.LOGIN and
+            (globalSetting.ctpPrintTrade or xtpPrintTrade)):
+            content = u"成交的详细信息\n%s\nvtOrderID: %s\n%s\n%s\n" %('-'*80,
+                tmp.vtOrderID.values,
+                tmp[['vtSymbol','offset','direction','price','orderTime',#'totalVolume',
+                      'tradedVolume','tradeTime','status']].to_string(index=False),
+                '-'*80)
+            self.writeLog(content, gatewayName = trade.gatewayName)
+        ## ---------------------------------------------------------------------
 
     #----------------------------------------------------------------------
     def processPositionEvent(self, event):
@@ -558,6 +601,24 @@ class DataEngine(object):
     def getAllOrders(self):
         """获取所有委托"""
         return self.orderDict.values()
+
+    #----------------------------------------------------------------------
+    def getAllOrdersDataFrame(self):
+        """获取所有委托"""
+        ########################################################################
+        ## william
+        ########################################################################
+        allOrders = self.orderDict.values()
+        if len(allOrders):
+            dfHeader = allOrders[0].__dict__.keys()
+            dfData   = []
+            for i in xrange(len(allOrders)):
+                dfData.append(allOrders[i].__dict__.values())
+            df = pd.DataFrame(dfData, columns = dfHeader)
+            ## -----------------------------------------------------------------
+            return df
+        else:
+            return pd.DataFrame()
     
     #----------------------------------------------------------------------
     def getAllTrades(self):
@@ -632,7 +693,18 @@ class DataEngine(object):
     def getError(self):
         """获取错误"""
         return self.errorList
-    
+
+    #----------------------------------------------------------------------
+    def writeLog(self, content, logLevel = logging.INFO, gatewayName = 'DATA_ENGINE'):
+        """快速发出日志事件"""
+        log = VtLogData()
+        log.logContent = content
+        log.logLevel = logLevel
+        log.gatewayName = gatewayName
+        
+        event = Event(type_=EVENT_LOG)
+        event.dict_['data'] = log
+        self.eventEngine.put(event)              
 
 ########################################################################    
 class LogEngine(object):
@@ -691,8 +763,8 @@ class LogEngine(object):
         """添加文件输出"""
         if not self.fileHandler:
             if not filename:
-                filename = 'vt_' + datetime.now().strftime('%Y%m%d') + '.log'
-            filepath = getTempPath(filename)
+                filename = vtFunction.tradingDay() + "_" + globalSetting.accountID + '.log'
+            filepath = vtFunction.getTempPath(filename, subdir = 'log')
             self.fileHandler = logging.FileHandler(filepath)
             self.fileHandler.setLevel(self.level)
             self.fileHandler.setFormatter(self.formatter)
