@@ -387,7 +387,7 @@ class OIStrategy(CtaTemplate):
         ## =====================================================================
         if not self.trading:
             return 
-        if tick.datetime <= (datetime.now() - timedelta(seconds=5)):
+        if tick.datetime <= (datetime.now() - timedelta(seconds=10)):
             return
         # elif self.accountID in self.WINNER_STRATEGY:
         #     self.bg.updateTick(tick)
@@ -409,7 +409,7 @@ class OIStrategy(CtaTemplate):
                         for k in self.tradingOrdersOpen.keys()]):
             ####################################################################
 
-            if self.accountID not in ['SimNow_YY']:
+            if self.accountID not in ['SimNow_YY','YunYang1']:
                 ## -----------------------------------------------------------------
                 ## 第一个数据进来就直接下单，不用再等后面的数据
                 if self.tradingStartCounter <= 30:
@@ -424,13 +424,6 @@ class OIStrategy(CtaTemplate):
                     ## ---------------------------------------------------------------------------------
                     for i in xrange(self.realOrderLevel):
                         for x in vtSymbolOpen:
-                            ## -----------------------------------------------------
-                            # exchange = self.ctaEngine.lastTickDict[x]['exchange']
-                            # if not self.ctaEngine.exchangeTradingStatus[exchange]:
-                            #     self.writeCtaLog(u'%s 未到交易时间.' %exchange,
-                            #                      logLevel = ERROR) 
-                            #     continue
-                            ## -----------------------------------------------------
                             self.prepareTradingOrderSplit(
                                 vtSymbol      = x,
                                 tradingOrders = self.tradingOrdersOpen,
@@ -469,13 +462,14 @@ class OIStrategy(CtaTemplate):
                 if (self.ctaEngine.mainEngine.initialCapital <= 0.5e7 and
                     id[0:2] not in ['bu','cs','pb','c1','a1','b1',
                                     'v1','y1','l1','p1','i1',
-                                    'FG','RM','OI','SM','SR','SF'] and 
+                                    'FG','RM','OI','SM','SR','SF',
+                                    'TA','CY'] and 
                     m < self.tradingCloseMinute2-3):
                     tempPriceType = 'best'
                 else:
                     tempPriceType = 'last'
                 ## ----------------------------
-                if self.accountID not in ['SimNow_YY']:
+                if self.accountID not in ['SimNow_YY','YunYang1']:
                     ## -----------------------------------------
                     self.prepareTradingOrderSplit(
                         vtSymbol      = id,
@@ -702,66 +696,66 @@ class OIStrategy(CtaTemplate):
                 tempKey = (vtSymbol + '-' + tempDirection).encode('ascii','ignore')
                 ## -------------------------------------------------------------
                 
-                if self.accountID not in self.WINNER_STRATEGY:
-                    ## =============================================================
-                    ## 涨跌停平仓单
-                    ## 目前暂时不使用这个功能了
-                    ## 不过不要删除，以后有可能会继续使用这个函数
-                    ## -------------------------------------------------------------
-                    if datetime.now().hour in [9,21] and datetime.now().minute < 2:
-                        ## 成交之后先累计，待时间满足之后再一起下涨跌停平仓单
-                        ## ---------------------------------------------------------
-                        if tempKey in self.tradingOrdersUpperLowerCum.keys():
-                            self.tradingOrdersUpperLowerCum[tempKey]['volume'] += self.stratTrade['volume']
-                        else:
-                            ## -----------------------------------------------------
-                            ## 生成 tradingOrdersUpperLowerCum
-                            self.tradingOrdersUpperLowerCum[tempKey] = {
-                                    'vtSymbol'      : vtSymbol,
-                                    'direction'     : tempDirection,
-                                    'volume'        : self.stratTrade['volume'],
-                                    'TradingDay'    : self.stratTrade['TradingDay'],
-                                    'vtOrderIDList' : []
-                                    }
-                            ## -----------------------------------------------------
-                        ## ---------------------------------------------------------
+                # if self.accountID not in self.WINNER_STRATEGY:
+                ## =============================================================
+                ## 涨跌停平仓单
+                ## 目前暂时不使用这个功能了
+                ## 不过不要删除，以后有可能会继续使用这个函数
+                ## -------------------------------------------------------------
+                if datetime.now().hour in [9,21] and datetime.now().minute < 2:
+                    ## 成交之后先累计，待时间满足之后再一起下涨跌停平仓单
+                    ## ---------------------------------------------------------
+                    if tempKey in self.tradingOrdersUpperLowerCum.keys():
+                        self.tradingOrdersUpperLowerCum[tempKey]['volume'] += self.stratTrade['volume']
                     else:
-                        ## 成交之后立即反手以涨跌停价格下平仓单
-                        ## ---------------------------------------------------------
-                        ## 生成 tradingOrdersUpperLower
-                        self.tradingOrdersUpperLower[tempKey] = {
+                        ## -----------------------------------------------------
+                        ## 生成 tradingOrdersUpperLowerCum
+                        self.tradingOrdersUpperLowerCum[tempKey] = {
                                 'vtSymbol'      : vtSymbol,
                                 'direction'     : tempDirection,
                                 'volume'        : self.stratTrade['volume'],
                                 'TradingDay'    : self.stratTrade['TradingDay'],
                                 'vtOrderIDList' : []
                                 }
-                        ## -------------------------------------------------------------
+                        ## -----------------------------------------------------
+                    ## ---------------------------------------------------------
+                else:
+                    ## 成交之后立即反手以涨跌停价格下平仓单
+                    ## ---------------------------------------------------------
+                    ## 生成 tradingOrdersUpperLower
+                    self.tradingOrdersUpperLower[tempKey] = {
+                            'vtSymbol'      : vtSymbol,
+                            'direction'     : tempDirection,
+                            'volume'        : self.stratTrade['volume'],
+                            'TradingDay'    : self.stratTrade['TradingDay'],
+                            'vtOrderIDList' : []
+                            }
+                    ## -------------------------------------------------------------
 
-                        ## -------------------------------------------------------------
-                        self.prepareTradingOrder(vtSymbol      = vtSymbol, 
-                                                 tradingOrders = self.tradingOrdersUpperLower, 
-                                                 orderIDList   = self.vtOrderIDListUpperLower,
-                                                 priceType     = tempPriceType,
-                                                 addTick       = 0)
-                        # --------------------------------------------------------------
-                        # 获得 vtOrderID
-                        tempFields = ['TradingDay','vtSymbol','vtOrderIDList','direction','volume']
-                        self.tradingOrdersUpperLower[tempKey]['vtOrderIDList'] = ujson.dumps(self.tradingOrdersUpperLower[tempKey]['vtOrderIDList'])
-                        tempRes = pd.DataFrame([[self.tradingOrdersUpperLower[tempKey][k] for k in tempFields]], 
-                                                columns = tempFields)
-                        tempRes.insert(1,'strategyID', self.strategyID)
-                        tempRes.rename(columns={'vtSymbol':'InstrumentID'}, inplace = True)
-                        ## -------------------------------------------------------------
-                        
-                        ## -------------------------------------------------------------
-                        try:
-                            self.saveMySQL(df = tempRes, tbl = 'UpperLowerInfo', over = 'append')
-                        except:
-                            self.writeCtaLog(u'UpperLower 涨跌停平仓订单 写入 MySQL 数据库出错',
-                                             logLevel = ERROR)
-                        ## ---------------------------------------------------------
-                        ## =============================================================
+                    ## -------------------------------------------------------------
+                    self.prepareTradingOrder(vtSymbol      = vtSymbol, 
+                                             tradingOrders = self.tradingOrdersUpperLower, 
+                                             orderIDList   = self.vtOrderIDListUpperLower,
+                                             priceType     = tempPriceType,
+                                             addTick       = 0)
+                    # --------------------------------------------------------------
+                    # 获得 vtOrderID
+                    tempFields = ['TradingDay','vtSymbol','vtOrderIDList','direction','volume']
+                    self.tradingOrdersUpperLower[tempKey]['vtOrderIDList'] = ujson.dumps(self.tradingOrdersUpperLower[tempKey]['vtOrderIDList'])
+                    tempRes = pd.DataFrame([[self.tradingOrdersUpperLower[tempKey][k] for k in tempFields]], 
+                                            columns = tempFields)
+                    tempRes.insert(1,'strategyID', self.strategyID)
+                    tempRes.rename(columns={'vtSymbol':'InstrumentID'}, inplace = True)
+                    ## -------------------------------------------------------------
+                    
+                    ## -------------------------------------------------------------
+                    try:
+                        self.saveMySQL(df = tempRes, tbl = 'UpperLowerInfo', over = 'append')
+                    except:
+                        self.writeCtaLog(u'UpperLower 涨跌停平仓订单 写入 MySQL 数据库出错',
+                                         logLevel = ERROR)
+                    ## ---------------------------------------------------------
+                    ## =============================================================
 
                 # elif self.accountID in self.WINNER_STRATEGY:
                 #     ## =============================================================
