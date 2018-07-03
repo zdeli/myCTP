@@ -1,7 +1,7 @@
 # encoding: UTF-8
 
 """
-YYStrategy 策略的交易实现
+HOStrategy 策略的交易实现
 ＠william
 """
 from __future__ import division
@@ -49,6 +49,8 @@ class HOStrategy(CtaTemplate):
     ## 策略的基本变量，由引擎管理
     trading      = False                    # 是否启动交易，由引擎管理
     tradingStart = False                    # 开盘启动交易
+    tradingStartSplit = False
+    tradingBetween = False
     tradingEnd   = False                    # 收盘开启交易
     tickTimer    = {}                  # 计时器, 用于记录单个合约发单的间隔时间
     ## -------------------------------------------------------------------------
@@ -94,17 +96,65 @@ class HOStrategy(CtaTemplate):
     def __init__(self, ctaEngine, setting):
         """Constructor"""
         ## 从　ctaEngine 继承所有属性和方法
-        super(YYStrategy, self).__init__(ctaEngine, setting)
+        super(HOStrategy, self).__init__(ctaEngine, setting)
+
+        ## =====================================================================
+        ## 子订单的拆单比例实现
+        if self.ctaEngine.mainEngine.initialCapital >= 0.8e7:
+            self.subOrdersLevel = {
+                              'level0':{'weight': 0.20, 'deltaTick': 0},
+                              'level1':{'weight': 0.45, 'deltaTick': 1},
+                              'level2':{'weight': 0.35, 'deltaTick': 2}
+                              }
+        else:
+            self.subOrdersLevel = {
+                              'level0':{'weight': 0.30, 'deltaTick': 0},
+                              'level1':{'weight': 0.70, 'deltaTick': 1},
+                              'level2':{'weight': 0, 'deltaTick': 2}
+                             }
+        self.totalOrderLevel = 1 + (len(self.subOrdersLevel) - 1) * 2
+        self.realOrderLevel = len(
+            [k for k in self.subOrdersLevel.keys() 
+                   if self.subOrdersLevel[k]['weight'] != 0]
+            )
+        ## =====================================================================
+
+        ## =====================================================================
+        self.openDiscount  = self.ctaEngine.mainEngine.openDiscountHO
+        self.closeDiscount = self.ctaEngine.mainEngine.closeDiscountHO
+
+        self.openAddTick   = self.ctaEngine.mainEngine.openAddTickHO
+        self.closeAddTick  = self.ctaEngine.mainEngine.closeAddTickHO
+        ## =====================================================================
+
+        ## =====================================================================
+        # 创建K线合成器对象
+        # self.bg = BarGenerator(self.onBar)
+        ## =====================================================================
+
 
         ## =====================================================================
         ## 交易时点
-        self.tradingOpenHour    = [21,9,10,13,11]
+        self.tradingStartCounter = 0
+        self.tradingOpenHour    = [21,9]
         self.tradingOpenMinute1 = 0
-        self.tradingOpenMinute2 = 59        
+        self.tradingOpenMinute2 = 10
 
         self.tradingCloseHour    = 14
         self.tradingCloseMinute1 = 50
         self.tradingCloseMinute2 = 59
+        self.accountID = globalSetting.accountID
+
+        if self.ctaEngine.mainEngine.initialCapital >= 1.5e7:
+            self.randomNo = 10 + random.randint(-3,3)    ## 随机间隔多少秒再下单
+        elif self.ctaEngine.mainEngine.initialCapital >= 1e7:
+            self.randomNo = 15 + random.randint(-3,3)    ## 随机间隔多少秒再下单
+        elif self.ctaEngine.mainEngine.initialCapital >= 8e6:
+            self.randomNo = 20 + random.randint(-5,5)    ## 随机间隔多少秒再下单
+        elif self.ctaEngine.mainEngine.initialCapital >= 5e6:
+            self.randomNo = 30 + random.randint(-5,5)    ## 随机间隔多少秒再下单
+        else:
+            self.randomNo = 45 + random.randint(-5,5)    ## 随机间隔多少秒再下单
         ## =====================================================================
 
         ## ===================================================================== 
@@ -138,7 +188,22 @@ class HOStrategy(CtaTemplate):
             WHERE strategyID = '%s'
             AND TradingDay = '%s'
             """ %(self.strategyID, self.ctaEngine.tradingDay))
-        
+
+        ## =====================================================================
+        ## 涨跌停的订单
+        temp = vtFunction.dbMySQLQuery(
+            self.ctaEngine.mainEngine.dataBase,
+            """
+            SELECT *
+            FROM UpperLowerInfo
+            WHERE strategyID = '%s'
+            AND TradingDay = '%s'
+            """ %(self.strategyID, self.ctaEngine.tradingDate))
+        if len(temp):
+            for i in xrange(len(temp)):
+                self.vtOrderIDListUpperLower.extend(ast.literal_eval(temp.ix[i,'vtOrderIDList']))
+        ## =====================================================================
+
         ########################################################################
         ## william
         # 注册事件监听
@@ -156,11 +221,17 @@ class HOStrategy(CtaTemplate):
             self.updateTradingOrdersVtOrderID(tradingOrders = self.tradingOrdersOpen,
                                               stage = 'open')
             self.updateVtOrderIDList('open')
+            if len(self.tradingOrdersOpen):
+                for k in self.tradingOrdersOpen.keys():
+                    self.tradingOrdersOpen[k]['lastTimer'] -= timedelta(seconds = 60)
             ## -----------------------------------------------------------------
             self.tradingOrdersClose = self.fetchTradingOrders(stage = 'close')
             self.updateTradingOrdersVtOrderID(tradingOrders = self.tradingOrdersClose,
                                               stage = 'close')
             self.updateVtOrderIDList('close')
+            if len(self.tradingOrdersClose):
+                for k in self.tradingOrdersClose.keys():
+                    self.tradingOrdersClose[k]['lastTimer'] -= timedelta(seconds = 60)
         else:
             pass
         ## =====================================================================
@@ -207,50 +278,29 @@ class HOStrategy(CtaTemplate):
         # print tick.__dict__
         if not self.trading:
             return 
-        elif tick.datetime <= (datetime.now() - timedelta(seconds=30)):
-            return
-        elif tick.vtSymbol not in [self.tradingOrdersOpen[k]['vtSymbol'] for k in self.tradingOrdersOpen.keys()] + \
-        [self.tradingOrdersClose[k]['vtSymbol'] for k in self.tradingOrdersClose.keys()] + \
-        [self.tradingOrdersFailedInfo[k]['vtSymbol'] for k in self.tradingOrdersFailedInfo.keys()]:
-            return 
-        elif ((datetime.now() - self.tickTimer[tick.vtSymbol]).seconds <= 1):
+        elif tick.datetime <= (datetime.now() - timedelta(seconds=10)):
             return
         # =====================================================================
-
+        # pprint(tick.__dict__)
         ########################################################################
         ## william
         ## =====================================================================
-        if self.tradingOrdersFailedInfo and self.tradingStart:
-            self.prepareTradingOrder(vtSymbol      = tick.vtSymbol, 
-                                     tradingOrders = self.tradingOrdersFailedInfo, 
-                                     orderIDList   = self.vtOrderIDListFailedInfo,
-                                     priceType     = 'chasing')
+        # if self.tradingOrdersFailedInfo and self.tradingStart:
+        #     self.prepareTradingOrder(vtSymbol      = tick.vtSymbol, 
+        #                              tradingOrders = self.tradingOrdersFailedInfo, 
+        #                              orderIDList   = self.vtOrderIDListFailedInfo,
+        #                              priceType     = 'chasing')
         ## =====================================================================
 
         ## =====================================================================
-        if (tick.vtSymbol in [self.tradingOrdersOpen[k]['vtSymbol'] 
+        if (self.tradingStartSplit and 
+            tick.vtSymbol in [self.tradingOrdersOpen[k]['vtSymbol'] 
                              for k in self.tradingOrdersOpen.keys()]):
-            if (self.tradingStart and not self.tradingEnd):
-                tempPriceType = 'open'
-                tempDiscount  = self.ctaEngine.mainEngine.openDiscountYY
-                tempAddTick   = self.ctaEngine.mainEngine.openAddTickYY
-            elif self.tradingBetween:
-                tempPriceType = 'last'
-                tempDiscount  = 0
-                tempAddTick   = 0
-            elif self.tradingEnd:
-                tempPriceType = 'chasing'
-                tempDiscount  = 0
-                tempAddTick   = 1
-            else:
-                return
-            ####################################################################
+            ## -----------------------------------------------------------------
             self.prepareTradingOrder(vtSymbol      = tick.vtSymbol, 
                                      tradingOrders = self.tradingOrdersOpen, 
                                      orderIDList   = self.vtOrderIDListOpen,
-                                     priceType     = tempPriceType,
-                                     discount      = tempDiscount,
-                                     addTick       = tempAddTick)
+                                     priceType     = 'best')
         ## =====================================================================
 
 
@@ -259,8 +309,8 @@ class HOStrategy(CtaTemplate):
                              for k in self.tradingOrdersClose.keys()]):
             if (self.tradingStart and not self.tradingEnd):
                 tempPriceType = 'open'
-                tempDiscount  = self.ctaEngine.mainEngine.closeDiscountYY
-                tempAddTick   = self.ctaEngine.mainEngine.closeAddTickYY
+                tempDiscount  = self.closeDiscount
+                tempAddTick   = self.closeAddTick
             elif self.tradingBetween:
                 tempPriceType = 'last'
                 tempDiscount  = 0
@@ -272,12 +322,12 @@ class HOStrategy(CtaTemplate):
             else:
                 return
             ####################################################################
-            self.prepareTradingOrder(vtSymbol      = tick.vtSymbol, 
-                                     tradingOrders = self.tradingOrdersClose, 
-                                     orderIDList   = self.vtOrderIDListClose,
-                                     priceType     = tempPriceType,
-                                     discount      = tempDiscount,
-                                     addTick       = tempAddTick)
+            # self.prepareTradingOrder(vtSymbol      = tick.vtSymbol, 
+            #                          tradingOrders = self.tradingOrdersClose, 
+            #                          orderIDList   = self.vtOrderIDListClose,
+            #                          priceType     = tempPriceType,
+            #                          discount      = tempDiscount,
+            #                          addTick       = tempAddTick)
         ## =====================================================================
 
 
