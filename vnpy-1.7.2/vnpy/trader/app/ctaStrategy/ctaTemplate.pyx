@@ -911,7 +911,7 @@ class CtaTemplate(object):
         allOrders = self.ctaEngine.mainEngine.getAllOrdersDataFrame()
 
         cdef:
-            int tempWorkingVolume = 0,
+            int tempWorkingVolume = 0
             float remainingMinute
             int tempAddTick
             float tempDiscount
@@ -922,10 +922,12 @@ class CtaTemplate(object):
             int m = datetime.now().minute
 
         if len(allOrders):
-            tempWorkingOrders  = allOrders[(allOrders['vtSymbol'] == vtSymbol) & 
+            tempWorkingOrders = allOrders[(allOrders['vtSymbol'] == vtSymbol) & 
                                            (allOrders['status'].isin([u'未成交',u'部分成交'])) & 
                                            (allOrders['vtOrderID'].isin(orderIDList))]
             tempWorkingVolume = sum(tempWorkingOrders.totalVolume)
+        else:
+            tempWorkingOrders = []
 
         ## =============================================================================
         if self.tradingStartSplit:
@@ -1101,6 +1103,7 @@ class CtaTemplate(object):
     ############################################################################
     def updateTradingStatus(self):
         """调整交易状态"""
+        # t = datetime.now().time()
         cdef:
             int h = datetime.now().hour
             int m = datetime.now().minute
@@ -1110,15 +1113,16 @@ class CtaTemplate(object):
         ## =====================================================================
         if ( (h in [8,20] and m >= 59 and s >= 55) or 
              (h in [21,22,23,0,1,2]) or 
-             (9 <= h <= (self.tradingCloseHour-1)) or 
+             (9 <= h <= (self.tradingCloseHour-1)) or
              (h == self.tradingCloseHour and m < self.tradingCloseMinute1-10) ):
             self.tradingStart = True
         else:
             self.tradingStart = False
 
-        if ( (h in self.tradingOpenHour) and 
-            ((self.tradingOpenMinute1 <= m < self.tradingOpenMinute2-1) or 
-             (m == self.tradingOpenMinute2-1 and s < 50)) ):
+        if ( (h in [8,20] and m >= 59 and s >= 55) or 
+            ((h in self.tradingOpenHour) and 
+             ((self.tradingOpenMinute1 <= m < self.tradingOpenMinute2-1) or 
+              (m == self.tradingOpenMinute2-1 and s < 50))) ):
             self.tradingStartSplit = True
         else:
             self.tradingStartSplit = False
