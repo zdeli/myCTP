@@ -145,7 +145,7 @@ class OIStrategy(CtaTemplate):
         self.tradingStartCounter = 0
         self.tradingOpenHour    = [21,9]
         self.tradingOpenMinute1 = 0
-        self.tradingOpenMinute2 = 10
+        self.tradingOpenMinute2 = 20
 
         self.tradingCloseHour    = 14
         self.tradingCloseMinute1 = 50
@@ -420,7 +420,8 @@ class OIStrategy(CtaTemplate):
                             j in [self.tradingOrdersOpen[k]['vtSymbol'] 
                             for k in self.tradingOrdersOpen.keys()])]
                     if not vtSymbolOpen:
-                        return
+                        # return
+                        vtSymbolOpen = [id]
                     ## ---------------------------------------------------------------------------------
                     for i in xrange(self.realOrderLevel):
                         for x in vtSymbolOpen:
