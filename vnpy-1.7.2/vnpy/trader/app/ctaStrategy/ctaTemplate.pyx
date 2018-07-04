@@ -58,6 +58,8 @@ class CtaTemplate(object):
     inited         = False                    # 是否进行了初始化
     trading        = False                    # 是否启动交易，由引擎管理
     tradingStart   = False                    # 开盘启动交易
+    tradingStartSplit = False
+    tradingBetween = False
     tradingEnd     = False                    # 收盘开启交易
     pos            = 0                        # 持仓情况
     sendMailStatus = False                    # 是否已经发送邮件
@@ -892,7 +894,7 @@ class CtaTemplate(object):
                      str vtSymbol, 
                      dict tradingOrders, 
                      list orderIDList, 
-                     str priceType = '',
+                     str priceType = 'last',
                      int addTick = 0, 
                      float discount = 0.0):
         ## =========================================================================
@@ -932,18 +934,23 @@ class CtaTemplate(object):
         ## =============================================================================
         if self.tradingStartSplit:
             remainingMinute = (self.tradingOpenMinute2 - m) / (self.randomNo / 60.0)
-            tempPriceType = 'last'
-            tempAddTick = -1
+            tempPriceType = 'best'
+            tempAddTick = addTick
             tempDiscount = 0.0
         elif self.tradingStart:
             remainingMinute = 1
             tempPriceType = 'last'
-            tempAddTick = +2
+            tempAddTick = 2
             tempDiscount = 0.0
         elif self.tradingBetween:
             remainingMinute = (self.tradingCloseMinute2-1 - m) / (self.randomNo / 60.0)
             tempPriceType = priceType
             tempAddTick = addTick
+            tempDiscount = 0.0
+        elif self.tradingEnd:
+            remainingMinute = 1
+            tempPriceType = 'chasing'
+            tempAddTick = 2
             tempDiscount = 0.0
         else:
             return
@@ -957,8 +964,9 @@ class CtaTemplate(object):
         for k in tradingOrderList:
             # --------------------------------------------------------
             # 是否需要在 tradingStart 的时候开始追单 
-            if ( self.tradingStart and 
-                not (h in self.tradingOpenHour and m < self.tradingOpenMinute2) ):
+            if ((self.tradingStart and 
+                not (h in self.tradingOpenHour and m < self.tradingOpenMinute2)) or 
+                self.tradingEnd):
                 if len(tempWorkingOrders) != 0:
                     for vtOrderID in tradingOrders[k]['vtOrderIDList']:
                         if vtOrderID in tempWorkingOrders.vtOrderID.values:
