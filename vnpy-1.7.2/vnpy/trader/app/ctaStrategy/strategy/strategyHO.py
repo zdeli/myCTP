@@ -99,32 +99,13 @@ class HOStrategy(CtaTemplate):
         super(HOStrategy, self).__init__(ctaEngine, setting)
 
         ## =====================================================================
-        ## 子订单的拆单比例实现
-        if self.ctaEngine.mainEngine.initialCapital >= 0.8e7:
-            self.subOrdersLevel = {
-                              'level0':{'weight': 0.20, 'deltaTick': 0},
-                              'level1':{'weight': 0.45, 'deltaTick': 1},
-                              'level2':{'weight': 0.35, 'deltaTick': 2}
-                              }
-        else:
-            self.subOrdersLevel = {
-                              'level0':{'weight': 0.30, 'deltaTick': 0},
-                              'level1':{'weight': 0.70, 'deltaTick': 1},
-                              'level2':{'weight': 0, 'deltaTick': 2}
-                             }
-        self.totalOrderLevel = 1 + (len(self.subOrdersLevel) - 1) * 2
-        self.realOrderLevel = len(
-            [k for k in self.subOrdersLevel.keys() 
-                   if self.subOrdersLevel[k]['weight'] != 0]
-            )
-        ## =====================================================================
-
-        ## =====================================================================
         self.openDiscount  = self.ctaEngine.mainEngine.openDiscountHO
         self.closeDiscount = self.ctaEngine.mainEngine.closeDiscountHO
 
         self.openAddTick   = self.ctaEngine.mainEngine.openAddTickHO
         self.closeAddTick  = self.ctaEngine.mainEngine.closeAddTickHO
+
+
         ## =====================================================================
 
         ## =====================================================================
@@ -144,14 +125,37 @@ class HOStrategy(CtaTemplate):
         self.tradingCloseMinute1 = 50
         self.tradingCloseMinute2 = 59
         self.accountID = globalSetting.accountID
+        self.initialCapital = self.ctaEngine.mainEngine.initialCapital
 
-        if self.ctaEngine.mainEngine.initialCapital >= 1.5e7:
+        ## =====================================================================
+        ## 子订单的拆单比例实现
+        if self.initialCapital >= 0.8e7:
+            self.subOrdersLevel = {
+                              'level0':{'weight': 0.20, 'deltaTick': 0},
+                              'level1':{'weight': 0.45, 'deltaTick': 1},
+                              'level2':{'weight': 0.35, 'deltaTick': 2}
+                              }
+        else:
+            self.subOrdersLevel = {
+                              'level0':{'weight': 0.30, 'deltaTick': 0},
+                              'level1':{'weight': 0.70, 'deltaTick': 1},
+                              'level2':{'weight': 0, 'deltaTick': 2}
+                             }
+        self.totalOrderLevel = 1 + (len(self.subOrdersLevel) - 1) * 2
+        self.realOrderLevel = len(
+            [k for k in self.subOrdersLevel.keys() 
+                   if self.subOrdersLevel[k]['weight'] != 0]
+            )
+        ## =====================================================================
+
+        ## =====================================================================
+        if self.initialCapital >= 1.5e7:
             self.randomNo = 10 + random.randint(-3,3)    ## 随机间隔多少秒再下单
-        elif self.ctaEngine.mainEngine.initialCapital >= 1e7:
+        elif self.initialCapital >= 1e7:
             self.randomNo = 15 + random.randint(-3,3)    ## 随机间隔多少秒再下单
-        elif self.ctaEngine.mainEngine.initialCapital >= 8e6:
+        elif self.initialCapital >= 8e6:
             self.randomNo = 20 + random.randint(-5,5)    ## 随机间隔多少秒再下单
-        elif self.ctaEngine.mainEngine.initialCapital >= 5e6:
+        elif self.initialCapital >= 5e6:
             self.randomNo = 30 + random.randint(-5,5)    ## 随机间隔多少秒再下单
         else:
             self.randomNo = 45 + random.randint(-5,5)    ## 随机间隔多少秒再下单
@@ -275,61 +279,60 @@ class HOStrategy(CtaTemplate):
         """收到行情TICK推送（必须由用户继承实现）"""
 
         ## =====================================================================
-        # print tick.__dict__
         if not self.trading:
             return 
         elif tick.datetime <= (datetime.now() - timedelta(seconds=10)):
             return
         # =====================================================================
-        # pprint(tick.__dict__)
-        ########################################################################
-        ## william
+
+        id = tick.vtSymbol
+
         ## =====================================================================
+        if (id in [self.tradingOrdersOpen[k]['vtSymbol'] 
+                   for k in self.tradingOrdersOpen.keys()]):
+            ## -----------------------------------------------------------------
+            if self.tradingStartSplit:            
+                tempOrderIDList = self.vtOrderIDListOpenSplit
+            elif self.tradingStart:
+                tempOrderIDList = self.vtOrderIDListOpen
+
+            self.prepareSplit(
+                vtSymbol = id,
+                tradingOrders = self.tradingOrdersOpen,
+                orderIDList = tempOrderIDList)
+            ## -----------------------------------------------------------------
+        ## ---------------------------------------------------------------------
+        elif (id in [self.tradingOrdersClose[k]['vtSymbol'] 
+                     for k in self.tradingOrdersClose.keys()]):
+            ## ----------------------------
+            if (self.initialCapital <= 0.5e7 and
+                id[0:2] not in ['bu','cs','pb','c1','a1','b1',
+                                'v1','y1','l1','p1','i1',
+                                'FG','RM','OI','SM','SR','SF',
+                                'TA','CY','CF'] and 
+                m < self.tradingCloseMinute2-5):
+                tempPriceType = 'best'
+            else:
+                tempPriceType = 'last'
+            ## ----------------------------
+
+            self.prepareSplit(
+                vtSymbol      = id,
+                tradingOrders = self.tradingOrdersClose,
+                orderIDList   = self.vtOrderIDListClose,
+                priceType     = tempPriceType)
+        ## =====================================================================
+
+
+        ## =====================================================================
+        ## william
+        ## ---------------------------------------------------------------------
         # if self.tradingOrdersFailedInfo and self.tradingStart:
-        #     self.prepareTradingOrder(vtSymbol      = tick.vtSymbol, 
+        #     self.prepareTradingOrder(vtSymbol      = id, 
         #                              tradingOrders = self.tradingOrdersFailedInfo, 
         #                              orderIDList   = self.vtOrderIDListFailedInfo,
         #                              priceType     = 'chasing')
         ## =====================================================================
-
-        ## =====================================================================
-        if (self.tradingStartSplit and 
-            tick.vtSymbol in [self.tradingOrdersOpen[k]['vtSymbol'] 
-                             for k in self.tradingOrdersOpen.keys()]):
-            ## -----------------------------------------------------------------
-            self.prepareTradingOrder(vtSymbol      = tick.vtSymbol, 
-                                     tradingOrders = self.tradingOrdersOpen, 
-                                     orderIDList   = self.vtOrderIDListOpen,
-                                     priceType     = 'best')
-        ## =====================================================================
-
-
-        ## =====================================================================
-        if (tick.vtSymbol in [self.tradingOrdersClose[k]['vtSymbol'] 
-                             for k in self.tradingOrdersClose.keys()]):
-            if (self.tradingStart and not self.tradingEnd):
-                tempPriceType = 'open'
-                tempDiscount  = self.closeDiscount
-                tempAddTick   = self.closeAddTick
-            elif self.tradingBetween:
-                tempPriceType = 'last'
-                tempDiscount  = 0
-                tempAddTick   = 0
-            elif self.tradingEnd:
-                tempPriceType = 'chasing'
-                tempDiscount  = 0
-                tempAddTick   = 1
-            else:
-                return
-            ####################################################################
-            # self.prepareTradingOrder(vtSymbol      = tick.vtSymbol, 
-            #                          tradingOrders = self.tradingOrdersClose, 
-            #                          orderIDList   = self.vtOrderIDListClose,
-            #                          priceType     = tempPriceType,
-            #                          discount      = tempDiscount,
-            #                          addTick       = tempAddTick)
-        ## =====================================================================
-
 
 
     #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -343,18 +346,21 @@ class HOStrategy(CtaTemplate):
         self.tickTimer[trade.vtSymbol] = datetime.now()
         ## ---------------------------------------------------------------------
 
+        vtSymbol = trade.vtSymbol
+        vtOrderID = trade.vtOrderID
+
         ## =====================================================================
         ## 0. 数据预处理
         ## =====================================================================
         self.stratTrade = copy(trade.__dict__)
-        self.stratTrade['InstrumentID'] = self.stratTrade['vtSymbol']
+        self.stratTrade['InstrumentID'] = vtSymbol
         self.stratTrade['strategyID']   = self.strategyID
         self.stratTrade['tradeTime']    = datetime.now().strftime('%Y-%m-%d') + " " + self.stratTrade['tradeTime']
         self.stratTrade['TradingDay']   = self.ctaEngine.tradingDate
 
         ## ---------------------------------------------------------------------
         if self.stratTrade['offset'] == u'开仓':
-            tempOffset = u'开仓'
+            tempOffset = u'开仓'.encode('UTF-8')
             if self.stratTrade['direction'] == u'多':
                 self.stratTrade['direction'] = 'long'
                 tempDirection = 'buy'
@@ -362,7 +368,7 @@ class HOStrategy(CtaTemplate):
                 self.stratTrade['direction'] = 'short'
                 tempDirection = 'short'
         elif self.stratTrade['offset'] in [u'平仓', u'平昨', u'平今']:
-            tempOffset = u'平仓'
+            tempOffset = u'平仓'.encode('UTF-8')
             if self.stratTrade['direction'] == u'多':
                 self.stratTrade['direction'] = 'long'
                 tempDirection = 'cover'
@@ -372,28 +378,31 @@ class HOStrategy(CtaTemplate):
         ## ---------------------------------------------------------------------
 
         ## ---------------------------------------------------------------------
-        tempKey = self.stratTrade['vtSymbol'] + '-' + tempDirection
+        tempKey = (vtSymbol + '-' + tempDirection).encode('ascii','ignore')
         ## ---------------------------------------------------------------------
 
         ########################################################################
         ## william
         ## 更新数量
         ## 更新交易日期
-        if self.stratTrade['vtOrderID'] in self.vtOrderIDListOpen:
+        if (vtOrderID in self.vtOrderIDListOpen + self.vtOrderIDListOpenSplit and 
+            tempKey in self.tradingOrdersOpen.keys()):
             # ------------------------------------------------------------------
             self.tradingOrdersOpen[tempKey]['volume'] -= self.stratTrade['volume']
             if self.tradingOrdersOpen[tempKey]['volume'] == 0:
                 self.tradingOrdersOpen.pop(tempKey, None)
                 self.tradedOrdersOpen[tempKey] = tempKey
             # ------------------------------------------------------------------
-        elif self.stratTrade['vtOrderID'] in self.vtOrderIDListClose:
+        elif (vtOrderID in self.vtOrderIDListClose and 
+              tempKey in self.tradingOrdersClose.keys()):
             # ------------------------------------------------------------------
             self.tradingOrdersClose[tempKey]['volume'] -= self.stratTrade['volume']
             if self.tradingOrdersClose[tempKey]['volume'] == 0:
                 self.tradingOrdersClose.pop(tempKey, None)
                 self.tradedOrdersClose[tempKey] = tempKey
             # ------------------------------------------------------------------
-        elif self.stratTrade['vtOrderID'] in self.vtOrderIDListFailedInfo:
+        elif (vtOrderID in self.vtOrderIDListFailedInfo and 
+              tempKey in self.tradingOrdersFailedInfo.keys()):
             # ------------------------------------------------------------------
             self.tradingOrdersFailedInfo[tempKey]['volume'] -= self.stratTrade['volume']
             if self.tradingOrdersFailedInfo[tempKey]['volume'] == 0:
@@ -420,25 +429,24 @@ class HOStrategy(CtaTemplate):
             ## -----------------------------------------------------------------
 
         ## ---------------------------------------------------------------------
-        tempTradingInfo = pd.DataFrame([[self.stratTrade[k] for k in self.tradingInfoFields]], 
+        tempTradingInfo = pd.DataFrame(
+            [[self.stratTrade[k] for k in self.tradingInfoFields]], 
             columns = self.tradingInfoFields)
-        # self.updateTradingInfo(df = tempTradingInfo, tbName = 'tradingInfo')
         self.updateTradingInfo(df = tempTradingInfo)
-        self.tradingInfo = self.tradingInfo.append(tempTradingInfo, ignore_index=True)
+        # self.tradingInfo = self.tradingInfo.append(tempTradingInfo, ignore_index=True)
         ## ---------------------------------------------------------------------
 
         ########################################################################
         ## 处理 MySQL 数据库的 tradingOrders
         ## 如果成交了，需要从这里面再删除交易订单
         ########################################################################
-        if (trade.vtOrderID in list(set(self.vtOrderIDListOpen) | 
-                                    set(self.vtOrderIDListClose)) and 
-            self.ctaEngine.mainEngine.multiStrategy):
+        if vtOrderID in self.vtOrderIDListOpen + self.vtOrderIDListClose:
             self.updateTradingOrdersTable(self.stratTrade)
         ########################################################################
 
         ## =====================================================================
         # 发出状态更新事件
+        self.tickTimer[vtSymbol] = datetime.now()
         self.putEvent()
         ## =====================================================================
 
@@ -450,37 +458,47 @@ class HOStrategy(CtaTemplate):
     def processTradingStatus(self, event):
         """处理交易状态变更"""
         ## -----------------------
+        if not self.trading:
+            return
+        ## -----------------------
+
+        ## -----------------------
+        n = datetime.now()
+        h,m,s = n.hour, n.minute, n.second
+        if (s % 5 != 0):
+            return
+        ## -----------------------
+
+        ## -----------------------
         self.updateTradingStatus()
         ## -----------------------
 
-        ## -----------------------
-        h = datetime.now().hour
-        m = datetime.now().minute
-        s = datetime.now().second
-        ## -----------------------
-
+        ## =====================================================================
         if (h == self.tradingCloseHour and 
-            m in [self.tradingCloseMinute1, (self.tradingCloseMinute2-1)] and 
-            30 <= s <= 59 and (s % 10 == 0 or len(self.tradingOrdersClose) == 0)):
-            ## =================================================================
-            if self.ctaEngine.mainEngine.multiStrategy:
-                ## -------------------------------------------------------------
-                self.tradingOrdersOpen = self.fetchTradingOrders(stage = 'open')
-                self.updateTradingOrdersVtOrderID(tradingOrders = self.tradingOrdersOpen,
-                                                  stage = 'open')
-                self.updateVtOrderIDList('open')
-                ## -------------------------------------------------------------
-                self.tradingOrdersClose = self.fetchTradingOrders(stage = 'close')
-                self.updateTradingOrdersVtOrderID(tradingOrders = self.tradingOrdersClose,
-                                                  stage = 'close')
-                self.updateVtOrderIDList('close')
-            ## =================================================================
+            m in [self.tradingCloseMinute1, (self.tradingCloseMinute2)] and 
+            20 <= s <= 30 and (s % 5 == 0 or len(self.tradingOrdersClose) == 0)):
+            ## -------------------------------------------------------------
+            self.tradingOrdersOpen = self.fetchTradingOrders(stage = 'open')
+            self.updateTradingOrdersVtOrderID(
+                tradingOrders = self.tradingOrdersOpen,
+                stage = 'open')
+            self.updateVtOrderIDList('open')
+            ## -------------------------------------------------------------
+            self.tradingOrdersClose = self.fetchTradingOrders(stage = 'close')
+            self.updateTradingOrdersVtOrderID(
+                tradingOrders = self.tradingOrdersClose,
+                stage = 'close')
+            self.updateVtOrderIDList('close')
+            if len(self.tradingOrdersClose):
+                for k in self.tradingOrdersClose.keys():
+                    self.tradingOrdersClose[k]['lastTimer'] -= timedelta(seconds = 60)
+        ## =====================================================================
 
 
         ## =====================================================================
         ## 更新 workingInfo
         ## =====================================================================
-        if ((m % 5 == 0) and (s == 35)):
+        if (m % 5 == 0 and 10 <= s <= 30 and s % 10 == 0):
             self.updateOrderInfo()
             if self.tradingStart:
                 self.updateWorkingInfo(self.tradingOrdersOpen, 'open')
