@@ -107,8 +107,36 @@ class OIStrategy(CtaTemplate):
         super(OIStrategy, self).__init__(ctaEngine, setting)
 
         ## =====================================================================
+        self.accountID = globalSetting.accountID
+        self.initialCapital = self.ctaEngine.mainEngine.initialCapital
+
+        self.openDiscount  = self.ctaEngine.mainEngine.openDiscountOI
+        self.closeDiscount = self.ctaEngine.mainEngine.closeDiscountOI
+
+        self.openAddTick   = self.ctaEngine.mainEngine.openAddTickOI
+        self.closeAddTick  = self.ctaEngine.mainEngine.closeAddTickOI
+        ## =====================================================================
+
+        ## =====================================================================
+        # 创建K线合成器对象
+        # self.bg = BarGenerator(self.onBar)
+        ## =====================================================================
+
+        ## =====================================================================
+        ## 交易时点
+        self.tradingStartCounter = 0
+        self.tradingOpenHour    = [21,9]
+        self.tradingOpenMinute1 = 0
+        self.tradingOpenMinute2 = 10
+
+        self.tradingCloseHour    = 14
+        self.tradingCloseMinute1 = 50
+        self.tradingCloseMinute2 = 59
+        ## =====================================================================
+
+        ## =====================================================================
         ## 子订单的拆单比例实现
-        if self.ctaEngine.mainEngine.initialCapital >= 0.8e7:
+        if self.initialCapital >= 0.8e7:
             self.subOrdersLevel = {
                               'level0':{'weight': 0.20, 'deltaTick': 0},
                               'level1':{'weight': 0.45, 'deltaTick': 1},
@@ -128,37 +156,13 @@ class OIStrategy(CtaTemplate):
         ## =====================================================================
 
         ## =====================================================================
-        self.openDiscount  = self.ctaEngine.mainEngine.openDiscountOI
-        self.closeDiscount = self.ctaEngine.mainEngine.closeDiscountOI
-
-        self.openAddTick   = self.ctaEngine.mainEngine.openAddTickOI
-        self.closeAddTick  = self.ctaEngine.mainEngine.closeAddTickOI
-        ## =====================================================================
-
-        ## =====================================================================
-        # 创建K线合成器对象
-        self.bg = BarGenerator(self.onBar)
-        ## =====================================================================
-
-        ## =====================================================================
-        ## 交易时点
-        self.tradingStartCounter = 0
-        self.tradingOpenHour    = [21,9]
-        self.tradingOpenMinute1 = 0
-        self.tradingOpenMinute2 = 20
-
-        self.tradingCloseHour    = 14
-        self.tradingCloseMinute1 = 50
-        self.tradingCloseMinute2 = 59
-        self.accountID = globalSetting.accountID
-
-        if self.ctaEngine.mainEngine.initialCapital >= 1.5e7:
+        if self.initialCapital >= 1.5e7:
             self.randomNo = 10 + random.randint(-3,3)    ## 随机间隔多少秒再下单
-        elif self.ctaEngine.mainEngine.initialCapital >= 1e7:
+        elif self.initialCapital >= 1e7:
             self.randomNo = 15 + random.randint(-3,3)    ## 随机间隔多少秒再下单
-        elif self.ctaEngine.mainEngine.initialCapital >= 8e6:
+        elif self.initialCapital >= 8e6:
             self.randomNo = 20 + random.randint(-5,5)    ## 随机间隔多少秒再下单
-        elif self.ctaEngine.mainEngine.initialCapital >= 5e6:
+        elif self.initialCapital >= 5e6:
             self.randomNo = 30 + random.randint(-5,5)    ## 随机间隔多少秒再下单
         else:
             self.randomNo = 45 + random.randint(-5,5)    ## 随机间隔多少秒再下单
@@ -337,20 +341,20 @@ class OIStrategy(CtaTemplate):
     def onInit(self):
         """初始化策略（必须由用户继承实现）"""
         self.writeCtaLog(u'%s策略初始化' %self.name)
+
         ## =====================================================================
-        if self.ctaEngine.mainEngine.multiStrategy:
-            self.tradingOrdersOpen = self.fetchTradingOrders(stage = 'open')
-            self.updateTradingOrdersVtOrderID(tradingOrders = self.tradingOrdersOpen,
-                                              stage = 'open')
-            self.updateVtOrderIDList('open')
-            if len(self.tradingOrdersOpen):
-                for k in self.tradingOrdersOpen.keys():
-                    self.tradingOrdersOpen[k]['lastTimer'] -= timedelta(seconds = 60)
-        else:
-            pass
+        self.tradingOrdersOpen = self.fetchTradingOrders(stage = 'open')
+        self.updateTradingOrdersVtOrderID(
+            tradingOrders = self.tradingOrdersOpen,
+            stage = 'open')
+        self.updateVtOrderIDList('open')
+
+        if len(self.tradingOrdersOpen):
+            for k in self.tradingOrdersOpen.keys():
+                self.tradingOrdersOpen[k]['lastTimer'] -= timedelta(seconds = 60)
         ## =====================================================================
 
-        ## ---------------------------------------------------------------------
+        ## =====================================================================
         if self.tradingOrdersFailedInfo:
             self.writeCtaLog("昨日失败需要执行的订单\n%s\n%s\n%s" 
                 %('-'*80,
@@ -364,11 +368,11 @@ class OIStrategy(CtaTemplate):
         ## =====================================================================
 
         ## =====================================================================
-        ## ---------------------------------------------------------------------
         try:
             self.positionContracts = self.ctaEngine.mainEngine.dataEngine.positionInfo.keys()
         except:
             self.positionContracts = []
+            
         tempSymbolList = list(set(self.tradingOrdersOpen[k]['vtSymbol'] 
                                        for k in self.tradingOrdersOpen.keys()) | 
                               set(self.ctaEngine.allContracts) |
@@ -387,7 +391,7 @@ class OIStrategy(CtaTemplate):
         ## =====================================================================
         if not self.trading:
             return 
-        if tick.datetime <= (datetime.now() - timedelta(seconds=10)):
+        elif tick.datetime <= (datetime.now() - timedelta(seconds=10)):
             return
         # elif self.accountID in self.WINNER_STRATEGY:
         #     self.bg.updateTick(tick)
@@ -460,7 +464,7 @@ class OIStrategy(CtaTemplate):
                         for k in self.tradingOrdersClose.keys()]):
             if self.tradingBetween:
                 ## ----------------------------
-                if (self.ctaEngine.mainEngine.initialCapital <= 0.5e7 and
+                if (self.initialCapital <= 0.5e7 and
                     id[0:2] not in ['bu','cs','pb','c1','a1','b1',
                                     'v1','y1','l1','p1','i1',
                                     'FG','RM','OI','SM','SR','SF',
@@ -639,14 +643,16 @@ class OIStrategy(CtaTemplate):
                 self.tradingOrdersOpen.pop(tempKey, None)
                 self.tradedOrdersOpen[tempKey] = tempKey
             # ------------------------------------------------------------------
-        elif (vtOrderID in self.vtOrderIDListClose and tempKey in self.tradingOrdersClose.keys()):
+        elif (vtOrderID in self.vtOrderIDListClose and 
+              tempKey in self.tradingOrdersClose.keys()):
             # ------------------------------------------------------------------
             self.tradingOrdersClose[tempKey]['volume'] -= self.stratTrade['volume']
             if self.tradingOrdersClose[tempKey]['volume'] == 0:
                 self.tradingOrdersClose.pop(tempKey, None)
                 self.tradedOrdersClose[tempKey] = tempKey
             # ------------------------------------------------------------------
-        elif (vtOrderID in self.vtOrderIDListFailedInfo and tempKey in self.tradingOrdersFailedInfo.keys()):
+        elif (vtOrderID in self.vtOrderIDListFailedInfo and 
+              tempKey in self.tradingOrdersFailedInfo.keys()):
             # ------------------------------------------------------------------
             self.tradingOrdersFailedInfo[tempKey]['volume'] -= self.stratTrade['volume']
             if self.tradingOrdersFailedInfo[tempKey]['volume'] == 0:
@@ -655,7 +661,8 @@ class OIStrategy(CtaTemplate):
             ## 需要更新一下 failedInfo
             self.stratTrade['TradingDay'] = self.ctaEngine.lastTradingDate
             self.processTradingOrdersFailedInfo(self.stratTrade)
-        elif (vtOrderID in self.vtOrderIDListUpperLowerCum and tempKey in self.tradingOrdersUpperLowerCum.keys()):
+        elif (vtOrderID in self.vtOrderIDListUpperLowerCum and 
+              tempKey in self.tradingOrdersUpperLowerCum.keys()):
             # ------------------------------------------------------------------
             self.tradingOrdersUpperLowerCum[tempKey]['volume'] -= self.stratTrade['volume']
             # ------------------------------------------------------------------
@@ -796,7 +803,8 @@ class OIStrategy(CtaTemplate):
             ## -----------------------------------------------------------------
 
         ## ---------------------------------------------------------------------
-        tempTradingInfo = pd.DataFrame([[self.stratTrade[k] for k in self.tradingInfoFields]], 
+        tempTradingInfo = pd.DataFrame(
+            [[self.stratTrade[k] for k in self.tradingInfoFields]], 
             columns = self.tradingInfoFields)
         self.updateTradingInfo(df = tempTradingInfo)
         # self.tradingInfo = self.tradingInfo.append(tempTradingInfo, ignore_index=True)
@@ -856,8 +864,9 @@ class OIStrategy(CtaTemplate):
             ## =================================================================
             if self.ctaEngine.mainEngine.multiStrategy:
                 self.tradingOrdersClose = self.fetchTradingOrders(stage = 'close')
-                self.updateTradingOrdersVtOrderID(tradingOrders = self.tradingOrdersClose,
-                                                  stage = 'close')
+                self.updateTradingOrdersVtOrderID(
+                    tradingOrders = self.tradingOrdersClose,
+                    stage = 'close')
                 self.updateVtOrderIDList('close')
                 if len(self.tradingOrdersClose):
                     for k in self.tradingOrdersClose.keys():
