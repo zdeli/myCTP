@@ -106,8 +106,8 @@ cdef class CtaEngine(object):
         ## 交易所开盘状态确定
         self.exchangeTradingStatus = {
             'DCE'  : False,
-            'SHFE' : True,
-            'CZCE' : True,
+            'SHFE' : False,
+            'CZCE' : False,
             'INE'  : False}
         ## ----------------------------------------
 
@@ -299,7 +299,7 @@ cdef class CtaEngine(object):
             self.strategyOrderDict[strategy.name].add(vtOrderID)                         
             vtOrderIDList.append(vtOrderID)
             
-        self.writeCtaLog(u'策略%s发送委托: %s, %s, %s, %s@%s' 
+        self.writeCtaLog(u'策略%s发送委托: %s, %s, %s, %s@%s\n' 
                          %(strategy.name, vtSymbol, req.direction, req.offset, volume, req.price))
         return vtOrderIDList
 
