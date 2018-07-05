@@ -18,10 +18,11 @@ from vnpy.trader import vtFunction
 ## -----------------------------------------------------------------------------
 from logging import INFO, ERROR
 import talib
-import pandas as pd
+# import pandas as pd
+from pandas import DataFrame
 from pandas.io import sql
 from datetime import datetime,time,timedelta
-import time
+# import time
 import math,random
 
 import re,ast
@@ -58,7 +59,7 @@ class CtaTemplate(object):
     inited         = False                    # 是否进行了初始化
     trading        = False                    # 是否启动交易，由引擎管理
     tradingStart   = False                    # 开盘启动交易
-    tradingStartSplit = False
+    tradingSplit   = False
     tradingBetween = False
     tradingEnd     = False                    # 收盘开启交易
     pos            = 0                        # 持仓情况
@@ -932,7 +933,7 @@ class CtaTemplate(object):
             tempWorkingOrders = []
 
         ## =============================================================================
-        if self.tradingStartSplit:
+        if self.tradingSplit:
             remainingMinute = (self.tradingOpenMinute2 - m) / (self.randomNo / 60.0)
             tempPriceType = 'best'
             tempAddTick = addTick
@@ -1131,9 +1132,9 @@ class CtaTemplate(object):
             ((h in self.tradingOpenHour) and 
              ((self.tradingOpenMinute1 <= m < self.tradingOpenMinute2-1) or 
               (m == self.tradingOpenMinute2-1 and s < 50))) ):
-            self.tradingStartSplit = True
+            self.tradingSplit = True
         else:
-            self.tradingStartSplit = False
+            self.tradingSplit = False
 
         ## ---------------------------------------------------------------------
         if (h == self.tradingCloseHour and 
@@ -1257,7 +1258,7 @@ class CtaTemplate(object):
             temp['vtOrderIDList'] = ujson.dumps(temp['vtOrderIDList'])
             temp['stage'] = stage
             dfData.append([temp[kk] for kk in dfHeader])
-        df = pd.DataFrame(dfData, columns = dfHeader)
+        df = DataFrame(dfData, columns = dfHeader)
 
         ## ---------------------------------------------------------------------
         try:
@@ -1399,7 +1400,7 @@ class CtaTemplate(object):
         if len(tempOrderIDList) == 0:
             return 
         ## ---------------------------------------------------------------------
-        df = pd.DataFrame([], columns = self.orderInfoFields)
+        df = DataFrame([], columns = self.orderInfoFields)
         for i in tempOrderIDList:
             tempOrderInfo = self.ctaEngine.mainEngine.getAllOrdersDataFrame().loc[self.ctaEngine.mainEngine.getAllOrdersDataFrame().vtOrderID == i]
             tempOrderInfo['strategyID'] = self.strategyID
@@ -1498,7 +1499,7 @@ class CtaTemplate(object):
                     None
             ## -------------------------------------------------------------------------
         try:
-            df = pd.DataFrame(dfData, columns = self.failedInfoFields)
+            df = DataFrame(dfData, columns = self.failedInfoFields)
             ## -------------------------------------------------------------
             conn = vtFunction.dbMySQLConnect(self.ctaEngine.mainEngine.dataBase)
             cursor = conn.cursor()
@@ -1539,7 +1540,7 @@ class CtaTemplate(object):
                         for k in self.ctaEngine.lastTickDict.keys()]
                 k = [self.ctaEngine.lastTickDict[k].keys() 
                         for k in self.ctaEngine.lastTickDict.keys()]
-                df = pd.DataFrame(v, columns = k[0])
+                df = DataFrame(v, columns = k[0])
                 df.rename(columns={'datetime': 'updateTime'}, inplace=True)
                 df['TradingDay'] = self.ctaEngine.tradingDay
 
@@ -1597,7 +1598,7 @@ class CtaTemplate(object):
             ## 则直接添加过去即可
             try:
                 tempFields = ['strategyID','InstrumentID','TradingDay','direction','volume']
-                tempRes = pd.DataFrame([[stratTrade[k] for k in tempFields]], columns = tempFields)
+                tempRes = DataFrame([[stratTrade[k] for k in tempFields]], columns = tempFields)
                 self.saveMySQL(df = tempRes, 
                                tbl = 'positionInfo', 
                                over = 'append',
@@ -1658,8 +1659,9 @@ class CtaTemplate(object):
         tempPosInfo = mysqlPositionInfo[(mysqlPositionInfo.InstrumentID == stratTrade['InstrumentID']) &\
                                         (mysqlPositionInfo.direction == tempDirectionPos)].sort_values(by='TradingDay', ascending = True)
         ## ---------------------------------------------------------------------------------
+        tempResVolume = -stratTrade['volume']
         for i in xrange(len(tempPosInfo)):
-            tempResVolume = tempPosInfo.loc[tempPosInfo.index[i],'volume'] - stratTrade['volume']
+            tempResVolume += tempPosInfo.loc[tempPosInfo.index[i],'volume']
             mysqlPositionInfo.at[tempPosInfo.index[i], 'volume'] = tempResVolume
             if tempResVolume >= 0:
                 break
@@ -1756,13 +1758,17 @@ class CtaTemplate(object):
         if over == 'replace':
             over = 'append'
             try:
-                conn = vtFunction.dbMySQLConnect(self.ctaEngine.mainEngine.dataBase)
-                cursor = conn.cursor()
-                cursor.execute("""
-                                TRUNCATE TABLE %s
-                               """ %tbl)
-                conn.commit()
-                conn.close()
+                query = "TRUNCATE TABLE %s" %tbl
+                vtFunction.dbMySQLSend(self.dataBase, query)
+                ## -------------------------------------------------------------
+                # conn = vtFunction.dbMySQLConnect(self.ctaEngine.mainEngine.dataBase)
+                # cursor = conn.cursor()
+                # cursor.execute("""
+                #                 TRUNCATE TABLE %s
+                #                """ %tbl)
+                # conn.commit()
+                # conn.close()
+                ## -------------------------------------------------------------
             except:
                 print 'ctaTemplate.saveMySQL() 写入数据库失败'
         ## -------------------------------------------------------------
