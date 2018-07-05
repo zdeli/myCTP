@@ -145,7 +145,7 @@ if (nrow(posHO) == 0 & nrow(signalHO) != 0) {
                     paste0("'","open","'"),
                     "and TradingDay =", currTradingDay[1,days]))
     mysqlWrite(db = accountDB, tbl = 'tradingOrders', data = res)
-} else {
+} else if (nrow(posHO) != 0) {
     ## ----------------------------
     ## 如果有持仓，需要计算与平仓的关系，
     ## 用来确定平仓的数量
@@ -159,8 +159,8 @@ if (nrow(posHO) == 0 & nrow(signalHO) != 0) {
 
     ## ====================================================================== ##
     #                     pos    -    signal    =    delta      说明
-    #             | >0    -1@signal   +1@signal    只平不开：平仓@dealta
-    # deltaVolume | =0    -1@pos  ==  +1@signal   不开不平：只转化交易日期
+    #             | >0    -1@signal   +1@signal   只平不开：平仓@dealta,转化交易日期
+    # deltaVolume | =0    -1@pos  ==  +1@signal   不开不平：只转化交易日期,转化交易日期
     #             | <0    -1@pos      +1@pos      不平只开：开仓@delta
     ## ====================================================================== ##
     dtU <- dtHO[deltaVolume > 0]
@@ -172,6 +172,9 @@ if (nrow(posHO) == 0 & nrow(signalHO) != 0) {
     recordingU <- recordingM <- recordingL <- data.table()
 
     ## ----------------
+    ## 持仓信息
+    ## position
+    ## 
     ## 需要进行平仓交易的
     ## trading
     ## 
@@ -316,3 +319,65 @@ if (nrow(posHO) == 0 & nrow(signalHO) != 0) {
     }
 }
 
+# if (nrow(signalOI) == 0) {
+#     stop("No OIStrategy tradingOrders.")
+# }
+
+## =============================================================================
+## 处理　OIStrategy 内部的关系
+## 1. 根据 posHO 与 signalHO 来
+## -----------------------------------------------------------------------------
+
+## -------------------
+## HOStrategy 的平仓信息
+## -------------------
+closeHO <- mysqlQuery(
+    db = accountDB,
+    query = paste(
+        "select * from tradingOrders
+        where strategyID = 'HOStrategy'
+        and stage = 'close'
+        and TradingDay =", currTradingDay[1,days]
+    )) %>% .[, TradingDay := ymd(TradingDay)] %>% 
+    .[, direction := ifelse(orderType == 'sell', 'long','short')]
+
+if (nrow(closeHO) == 0) {
+    print('hello')
+} else {
+    ## --------------------
+    ## 如果有平仓的订单
+    ## 则开始进行合并订单的处理
+    ## --------------------
+    dtOI <- merge(signalOI, closeHO,
+        by = c('TradingDay','InstrumentID','direction'),
+        all.x = T)
+    dtOI[, ":="(volume.x = ifelse(is.na(volume.x), 0, volume.x),
+                volume.y = ifelse(is.na(volume.y), 0, volume.y))] %>%
+        .[, deltaVolume := volume.x - volume.y]
+    print(dtOI)
+
+    ## ====================================================================== ##
+                        signal  -   orders    =    delta      说明
+                | >0    +1@orders   -1@orders   只开不平：开仓@delta, 转化 strategyID
+    deltaVolume | =0    -1@signal   +1@signal   不开不平：只转化 strategyID
+                | <0    +1@signal   -1@signal   只平不开：平仓@delta
+    ## ====================================================================== ##
+    dtU <- dtOI[deltaVolume > 0]
+    dtM <- dtOI[deltaVolume == 0]
+    dtL <- dtOI[deltaVolume < 0]
+
+    positionU <- positionM <- data.table()
+    tradingU <- tradingL <- data.table()
+    recordingU <- recordingM <- recordingL <- data.table()
+
+    ## ----------------
+    ## 持仓信息
+    ## position
+    ## 
+    ## 需要进行平仓交易的
+    ## trading
+    ## 
+    ## 需要改变日期的
+    ## recording
+    ## ----------------
+}
