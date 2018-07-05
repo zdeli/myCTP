@@ -38,13 +38,6 @@ cdef class MainEngine(object):
     #----------------------------------------------------------------------
     def __cinit__(self, eventEngine):
         """Constructor"""
-        # 记录今日日期
-        # self.todayDate = datetime.now().strftime('%Y%m%d')
-        # self.tradingDay = vtFunction.tradingDay()
-        # self.tradingDate = vtFunction.tradingDate()
-        # self.lastTradingDay = vtFunction.lastTradingDay()
-        # self.lastTradingDate = vtFunction.lastTradingDate()
-
         # 绑定事件引擎
         self.eventEngine = eventEngine
         self.eventEngine.start()
@@ -131,7 +124,7 @@ cdef class MainEngine(object):
         self.appDetailList.append(d)
 
     #----------------------------------------------------------------------
-    cpdef getGateway(self, str gatewayName):
+    cpdef getGateway(self, gatewayName):
         """获取接口"""
         if gatewayName in self.gatewayDict:
             return self.gatewayDict[gatewayName]
@@ -140,12 +133,15 @@ cdef class MainEngine(object):
             return None
 
     #----------------------------------------------------------------------
-    cpdef connect(self, str accountID, str gatewayName = 'CTP'):
+    cpdef connect(self, accountID, gatewayName = 'CTP'):
         """连接特定名称的接口"""
         gateway = self.getGateway(gatewayName)
 
         if gateway:
-            gateway.connect(accountID)
+            if gatewayName == 'CTP':
+                gateway.connect(accountID)
+            else:
+                gateway.connect()
             sleep(5)
             if gatewayName == 'CTP':
                 ## -------------------------------------------------------------
@@ -178,6 +174,7 @@ cdef class MainEngine(object):
                             self.sendMailCounter += 1
                 ## -------------------------------------------------------------
 
+                
     #----------------------------------------------------------------------
     cpdef subscribe(self, subscribeReq, gatewayName):
         """订阅特定接口的行情"""
@@ -187,7 +184,7 @@ cdef class MainEngine(object):
             gateway.subscribe(subscribeReq)
 
     #----------------------------------------------------------------------
-    cpdef sendOrder(self, orderReq, str gatewayName):
+    cpdef sendOrder(self, orderReq, gatewayName):
         """对特定接口发单"""
         # 如果创建了风控引擎，且风控检查失败则不发单
         if self.rmEngine and not self.rmEngine.checkRisk(orderReq, gatewayName):
@@ -203,7 +200,7 @@ cdef class MainEngine(object):
             return ''
 
     #----------------------------------------------------------------------
-    cpdef cancelOrder(self, cancelOrderReq, str gatewayName):
+    cpdef cancelOrder(self, cancelOrderReq, gatewayName):
         """对特定接口撤单"""
         gateway = self.getGateway(gatewayName)
 
@@ -306,7 +303,7 @@ cdef class MainEngine(object):
 
 
     #----------------------------------------------------------------------
-    cpdef qryAccount(self, str gatewayName):
+    cpdef qryAccount(self, gatewayName):
         """查询特定接口的账户"""
         gateway = self.getGateway(gatewayName)
 
@@ -314,7 +311,7 @@ cdef class MainEngine(object):
             gateway.qryAccount()
 
     #----------------------------------------------------------------------
-    cpdef qryPosition(self, str gatewayName):
+    cpdef qryPosition(self, gatewayName):
         """查询特定接口的持仓"""
         gateway = self.getGateway(gatewayName)
 
@@ -336,7 +333,7 @@ cdef class MainEngine(object):
             appEngine.stop()
 
     #----------------------------------------------------------------------
-    cpdef writeLog(self, content, logLevel = INFO, str gatewayName = 'MAIN_ENGINE'):
+    cpdef writeLog(self, content, logLevel = INFO, gatewayName = 'MAIN_ENGINE'):
         """快速发出日志事件"""
         log = VtLogData()
         # log.logContent = content + '\n'
@@ -586,7 +583,7 @@ cdef class DataEngine(object):
         temp = pd.DataFrame([trade.__dict__.values()], columns = trade.__dict__.keys())
         ## ---------------------------------------------------------------------
         if globalSetting.LOGIN and globalSetting.PRINT_TRADE:
-            content = u"成交的详细信息\n%s\n%s\n%s" %('-'*80,
+            content = u"成交的详细信息\n%s\n%s\n%s\n" %('-'*80,
                 temp[['vtOrderID','vtSymbol','offset','direction','price',
                       'tradedVolume','tradeTime','status']].to_string(index=False),
                 '-'*80)
@@ -700,7 +697,7 @@ cdef class DataEngine(object):
         ########################################################################
         allOrders = self.orderDict.values()
         cdef int i
-        # if len(allOrders) != 0:
+        cdef list dfData
         if len(allOrders):
             dfHeader = allOrders[0].__dict__.keys()
             dfData   = []
@@ -710,7 +707,6 @@ cdef class DataEngine(object):
             ## -----------------------------------------------------------------
             return df
         else:
-            # self.writeLog("没有查询到订单!!!", logLevel = ERROR)
             return pd.DataFrame()
 
     #----------------------------------------------------------------------
@@ -893,7 +889,7 @@ cdef class DataEngine(object):
     ## =========================================================================
     ## william
     ## -------------------------------------------------------------------------
-    cpdef writeLog(self, content, int logLevel = INFO, str gatewayName = 'DATA_ENGINE'):
+    cpdef writeLog(self, content, int logLevel = INFO, gatewayName = 'DATA_ENGINE'):
         """快速发出日志事件"""
         log = VtLogData()
         log.logContent = content
@@ -1492,4 +1488,3 @@ cdef class PositionDetail(object):
 
         # 其他情况则直接返回空
         return []
-
