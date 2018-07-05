@@ -7,19 +7,17 @@ HOStrategy 策略的交易实现
 from __future__ import division
 import os,sys,subprocess
 
-from vnpy.trader.vtObject import VtBarData
 from vnpy.trader.vtConstant import EMPTY_STRING
-from vnpy.trader.app.ctaStrategy.ctaTemplate import (CtaTemplate, 
-                                                     BarGenerator)
+from vnpy.trader.app.ctaStrategy.ctaTemplate import CtaTemplate
 from vnpy.trader.vtEvent import *
 from vnpy.trader import vtFunction
 ## -----------------------------------------------------------------------------
 from logging import INFO, ERROR
-import pandas as pd
+# import pandas as pd
+from pandas import DataFrame
 from pandas.io import sql
 
 from datetime import datetime,time,timedelta
-# import time
 from pprint import pprint,pformat
 from copy import copy
 import math,random
@@ -29,7 +27,7 @@ from vnpy.trader.vtGlobal import globalSetting
 
 ########################################################################
 class HOStrategy(CtaTemplate):
-    """ oiRank 交易策略 """
+    """ HoldOn 持仓周期交易策略 """
     ############################################################################
     ## william
     ## 
@@ -37,7 +35,7 @@ class HOStrategy(CtaTemplate):
     ## -------------------------------------------------------------------------
     name = u'HoldOn'
     strategyID = className = u'HOStrategy'
-    author = u'Lin HuanGeng'
+    author = 'Lin HuanGeng'
     ############################################################################
     
     ## =========================================================================
@@ -49,7 +47,7 @@ class HOStrategy(CtaTemplate):
     ## 策略的基本变量，由引擎管理
     trading      = False                    # 是否启动交易，由引擎管理
     tradingStart = False                    # 开盘启动交易
-    tradingStartSplit = False
+    tradingSplit = False
     tradingBetween = False
     tradingEnd   = False                    # 收盘开启交易
     tickTimer    = {}                  # 计时器, 用于记录单个合约发单的间隔时间
@@ -99,33 +97,27 @@ class HOStrategy(CtaTemplate):
         super(HOStrategy, self).__init__(ctaEngine, setting)
 
         ## =====================================================================
+        self.accountID = globalSetting.accountID
+        self.initialCapital = self.ctaEngine.mainEngine.initialCapital
+
         self.openDiscount  = self.ctaEngine.mainEngine.openDiscountHO
         self.closeDiscount = self.ctaEngine.mainEngine.closeDiscountHO
 
         self.openAddTick   = self.ctaEngine.mainEngine.openAddTickHO
         self.closeAddTick  = self.ctaEngine.mainEngine.closeAddTickHO
-
-
         ## =====================================================================
-
-        ## =====================================================================
-        # 创建K线合成器对象
-        # self.bg = BarGenerator(self.onBar)
-        ## =====================================================================
-
 
         ## =====================================================================
         ## 交易时点
         self.tradingStartCounter = 0
         self.tradingOpenHour    = [21,9]
         self.tradingOpenMinute1 = 0
-        self.tradingOpenMinute2 = 10
+        self.tradingOpenMinute2 = 40
 
         self.tradingCloseHour    = 14
         self.tradingCloseMinute1 = 50
         self.tradingCloseMinute2 = 59
-        self.accountID = globalSetting.accountID
-        self.initialCapital = self.ctaEngine.mainEngine.initialCapital
+        ## =====================================================================
 
         ## =====================================================================
         ## 子订单的拆单比例实现
@@ -184,14 +176,14 @@ class HOStrategy(CtaTemplate):
         ## ---------------------------------------------------------------------
         ## 查看当日已经交易的订单
         ## ---------------------------------------------------------------------
-        self.tradingInfo = vtFunction.dbMySQLQuery(
-            self.ctaEngine.mainEngine.dataBase,
-            """
-            SELECT *
-            FROM tradingInfo
-            WHERE strategyID = '%s'
-            AND TradingDay = '%s'
-            """ %(self.strategyID, self.ctaEngine.tradingDay))
+        # self.tradingInfo = vtFunction.dbMySQLQuery(
+        #     self.ctaEngine.mainEngine.dataBase,
+        #     """
+        #     SELECT *
+        #     FROM tradingInfo
+        #     WHERE strategyID = '%s'
+        #     AND TradingDay = '%s'
+        #     """ %(self.strategyID, self.ctaEngine.tradingDay))
 
         ## =====================================================================
         ## 涨跌停的订单
@@ -218,29 +210,29 @@ class HOStrategy(CtaTemplate):
     def onInit(self):
         """初始化策略（必须由用户继承实现）"""
         self.writeCtaLog(u'%s策略初始化' %self.name)
+
         ## =====================================================================
-        if self.ctaEngine.mainEngine.multiStrategy:
-            ## -----------------------------------------------------------------
-            self.tradingOrdersOpen = self.fetchTradingOrders(stage = 'open')
-            self.updateTradingOrdersVtOrderID(tradingOrders = self.tradingOrdersOpen,
-                                              stage = 'open')
-            self.updateVtOrderIDList('open')
-            if len(self.tradingOrdersOpen):
-                for k in self.tradingOrdersOpen.keys():
-                    self.tradingOrdersOpen[k]['lastTimer'] -= timedelta(seconds = 60)
-            ## -----------------------------------------------------------------
-            self.tradingOrdersClose = self.fetchTradingOrders(stage = 'close')
-            self.updateTradingOrdersVtOrderID(tradingOrders = self.tradingOrdersClose,
-                                              stage = 'close')
-            self.updateVtOrderIDList('close')
-            if len(self.tradingOrdersClose):
-                for k in self.tradingOrdersClose.keys():
-                    self.tradingOrdersClose[k]['lastTimer'] -= timedelta(seconds = 60)
-        else:
-            pass
+        self.tradingOrdersOpen = self.fetchTradingOrders(stage = 'open')
+        self.updateTradingOrdersVtOrderID(tradingOrders = self.tradingOrdersOpen,
+                                          stage = 'open')
+        self.updateVtOrderIDList('open')
+
+        if len(self.tradingOrdersOpen):
+            for k in self.tradingOrdersOpen.keys():
+                self.tradingOrdersOpen[k]['lastTimer'] -= timedelta(seconds = 60)
+
+        ## -----------------------------------------------------------------
+        self.tradingOrdersClose = self.fetchTradingOrders(stage = 'close')
+        self.updateTradingOrdersVtOrderID(tradingOrders = self.tradingOrdersClose,
+                                          stage = 'close')
+        self.updateVtOrderIDList('close')
+
+        if len(self.tradingOrdersClose):
+            for k in self.tradingOrdersClose.keys():
+                self.tradingOrdersClose[k]['lastTimer'] -= timedelta(seconds = 60)
         ## =====================================================================
 
-        ## ---------------------------------------------------------------------
+        ## =====================================================================
         if self.tradingOrdersFailedInfo:
             self.writeCtaLog("昨日失败需要执行的订单\n%s\n%s\n%s" 
                 %('-'*80,
@@ -256,12 +248,14 @@ class HOStrategy(CtaTemplate):
                 %('-'*80,
                   pformat(self.tradingOrdersClose),
                   '-'*80))
+        ## =====================================================================
 
-        ## ---------------------------------------------------------------------
+        ## =====================================================================
         try:
             self.positionContracts = self.ctaEngine.mainEngine.dataEngine.positionInfo.keys()
         except:
             self.positionContracts = []
+
         tempSymbolList = list(set(self.tradingOrdersOpen[k]['vtSymbol'] 
                                        for k in self.tradingOrdersOpen.keys()) | 
                               set(self.ctaEngine.allContracts) |
@@ -283,17 +277,19 @@ class HOStrategy(CtaTemplate):
             return 
         elif tick.datetime <= (datetime.now() - timedelta(seconds=10)):
             return
+        # return
         # =====================================================================
 
         id = tick.vtSymbol
 
         ## =====================================================================
-        if (id in [self.tradingOrdersOpen[k]['vtSymbol'] 
+        if (self.tradingStart and 
+            id in [self.tradingOrdersOpen[k]['vtSymbol'] 
                    for k in self.tradingOrdersOpen.keys()]):
             ## -----------------------------------------------------------------
-            if self.tradingStartSplit:            
+            if self.tradingSplit:            
                 tempOrderIDList = self.vtOrderIDListOpenSplit
-            elif self.tradingStart:
+            else:
                 tempOrderIDList = self.vtOrderIDListOpen
 
             self.prepareSplit(
@@ -302,7 +298,8 @@ class HOStrategy(CtaTemplate):
                 orderIDList = tempOrderIDList)
             ## -----------------------------------------------------------------
         ## ---------------------------------------------------------------------
-        elif (id in [self.tradingOrdersClose[k]['vtSymbol'] 
+        elif ((self.tradingBetween or self.tradingEnd) and
+              id in [self.tradingOrdersClose[k]['vtSymbol'] 
                      for k in self.tradingOrdersClose.keys()]):
             ## ----------------------------
             if (self.initialCapital <= 0.5e7 and
@@ -310,7 +307,7 @@ class HOStrategy(CtaTemplate):
                                 'v1','y1','l1','p1','i1',
                                 'FG','RM','OI','SM','SR','SF',
                                 'TA','CY','CF'] and 
-                m < self.tradingCloseMinute2-5):
+                datetime.now().minute < self.tradingCloseMinute2-5):
                 tempPriceType = 'best'
             else:
                 tempPriceType = 'last'
@@ -429,7 +426,7 @@ class HOStrategy(CtaTemplate):
             ## -----------------------------------------------------------------
 
         ## ---------------------------------------------------------------------
-        tempTradingInfo = pd.DataFrame(
+        tempTradingInfo = DataFrame(
             [[self.stratTrade[k] for k in self.tradingInfoFields]], 
             columns = self.tradingInfoFields)
         self.updateTradingInfo(df = tempTradingInfo)
@@ -477,13 +474,7 @@ class HOStrategy(CtaTemplate):
         if (h == self.tradingCloseHour and 
             m in [self.tradingCloseMinute1, (self.tradingCloseMinute2)] and 
             20 <= s <= 30 and (s % 5 == 0 or len(self.tradingOrdersClose) == 0)):
-            ## -------------------------------------------------------------
-            self.tradingOrdersOpen = self.fetchTradingOrders(stage = 'open')
-            self.updateTradingOrdersVtOrderID(
-                tradingOrders = self.tradingOrdersOpen,
-                stage = 'open')
-            self.updateVtOrderIDList('open')
-            ## -------------------------------------------------------------
+            ## -----------------------------------------------------------------
             self.tradingOrdersClose = self.fetchTradingOrders(stage = 'close')
             self.updateTradingOrdersVtOrderID(
                 tradingOrders = self.tradingOrdersClose,
