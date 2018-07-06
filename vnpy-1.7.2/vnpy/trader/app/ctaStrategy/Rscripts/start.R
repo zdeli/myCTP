@@ -304,7 +304,7 @@ if (nrow(posHO) == 0 & nrow(signalHO) != 0) {
                       query = paste(
                             "delete from tradingInfo where strategyID =",
                             paste0("'","HOStrategy","'"),
-                            "and TradingDay =", recording[j,TradingDay],
+                            "and TradingDay =", recording[j,gsub("-","",TradingDay)],
                             "and InstrumentID =", 
                             paste0("'", recording[j,InstrumentID], "'"),
                             "and direction =",
@@ -312,7 +312,8 @@ if (nrow(posHO) == 0 & nrow(signalHO) != 0) {
                             "and offset =",
                             paste0("'", recording[j,offset], "'"),
                             "and volume =", recording[j,volume],
-                            "and price =", recording[j,price]))
+                            "and price =", recording[j,price])
+                      )
         }
 
         mysqlWrite(db = accountDB, tbl = 'tradingInfo', data = recording)
@@ -557,11 +558,10 @@ if (nrow(closeHO) == 0) {
                     closeHO[i, volume := volume - tradingHO[InstrumentID == id, volume]]
                 }
             }
-            closeHO <- closeHO[volume > 0] %>% 
-                .[, direction := NULL]
+            closeHO <- closeHO[volume > 0]
         }
-
-        res <- list(tradingOI, closeHO) %>% rbindlist()
+        tradingHO <- closeHO[,.SD] %>% .[, direction := NULL]
+        res <- list(tradingOI, tradingHO) %>% rbindlist()
         mysqlWrite(db = accountDB, tbl = 'tradingOrders', data = res)
     }
 
