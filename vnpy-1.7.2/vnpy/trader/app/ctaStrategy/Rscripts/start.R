@@ -4,7 +4,7 @@
 ## 处理不同策略的订单
 ## =============================================================================
 
-rm(list = ls())
+# rm(list = ls())
 
 ## =============================================================================
 # args <- commandArgs(trailingOnly = TRUE)
@@ -74,8 +74,8 @@ posOI <- mysqlQuery(
     db = accountDB,
     query = paste(
         "select * from positionInfo where strategyID = 'OIStrategy'
-        and TradingDay = ", currTradingDay[1,days]))
-posOI[, TradingDay := ymd(TradingDay)]
+        and TradingDay = ", currTradingDay[1,days])) %>% 
+    .[, TradingDay := ymd(TradingDay)]
 
 print(posOI)
 ## -----------------------------------------------------------------------------
@@ -140,7 +140,7 @@ if (nrow(posHO) == 0 & nrow(signalHO) != 0) {
     mysqlSend(db = accountDB,
               query = paste(
                     "delete from tradingOrders where strategyID =",
-                    paste0("'","OIStrategy","'"),
+                    paste0("'","HOStrategy","'"),
                     "and stage =",
                     paste0("'","open","'"),
                     "and TradingDay =", currTradingDay[1,days]))
@@ -203,7 +203,7 @@ if (nrow(posHO) == 0 & nrow(signalHO) != 0) {
 
         recordingU <- lapply(1:nrow(dtU), function(j){
             dtU[j, .(
-                TradingDay = currTradingDay[1,days],
+                TradingDay = currTradingDay[1,ymd(days)],
                 tradeTime = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
                 strategyID, InstrumentID,
                 direction = c(ifelse(direction == 'long', 'short', 'long'),
@@ -227,7 +227,7 @@ if (nrow(posHO) == 0 & nrow(signalHO) != 0) {
 
         recordingM <- lapply(1:nrow(dtM), function(j){
             dtM[j, .(
-                TradingDay = currTradingDay[1,days],
+                TradingDay = currTradingDay[1,ymd(days)],
                 tradeTime = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
                 strategyID, InstrumentID,
                 direction = c(ifelse(direction == 'long', 'short', 'long'),
@@ -260,7 +260,7 @@ if (nrow(posHO) == 0 & nrow(signalHO) != 0) {
 
         recordingL <- lapply(1:nrow(dtL), function(j){
             dtL[j, .(
-                TradingDay = currTradingDay[1,days],
+                TradingDay = currTradingDay[1,ymd(days)],
                 tradeTime = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
                 strategyID, InstrumentID,
                 direction = c(ifelse(direction == 'long', 'short', 'long'),
@@ -342,7 +342,23 @@ closeHO <- mysqlQuery(
     .[, direction := ifelse(orderType == 'sell', 'long','short')]
 
 if (nrow(closeHO) == 0) {
-    print('hello')
+    ## -----------------
+    ## 如果没有平仓的信息
+    ## 则直接处理 交易信号
+    ## -----------------
+    res <- signalOI[, .(
+        TradingDay, strategyID, InstrumentID,
+        orderType = ifelse(direction == 'long','buy','short'),
+        volume, stage = 'open'
+        )]
+    mysqlSend(db = accountDB,
+              query = paste(
+                    "delete from tradingOrders where strategyID =",
+                    paste0("'","OIStrategy","'"),
+                    "and stage =",
+                    paste0("'","open","'"),
+                    "and TradingDay =", currTradingDay[1,days]))
+    mysqlWrite(db = accountDB, tbl = 'tradingOrders', data = res)
 } else {
     ## --------------------
     ## 如果有平仓的订单
@@ -357,10 +373,10 @@ if (nrow(closeHO) == 0) {
     print(dtOI)
 
     ## ====================================================================== ##
-                        signal  -   orders    =    delta      说明
-                | >0    +1@orders   -1@orders   只开不平：开仓@delta, 转化 strategyID
-    deltaVolume | =0    -1@signal   +1@signal   不开不平：只转化 strategyID
-                | <0    +1@signal   -1@signal   只平不开：平仓@delta
+    #                     signal  -   orders    =    delta      说明
+    #             | >0    +1@orders   -1@orders   只开不平：开仓@delta, 转化 strategyID
+    # deltaVolume | =0    -1@signal   +1@signal   不开不平：只转化 strategyID
+    #             | <0    +1@signal   -1@signal   只平不开：平仓@delta
     ## ====================================================================== ##
     dtU <- dtOI[deltaVolume > 0]
     dtM <- dtOI[deltaVolume == 0]
@@ -380,4 +396,221 @@ if (nrow(closeHO) == 0) {
     ## 需要改变日期的
     ## recording
     ## ----------------
+    if (nrow(dtU) != 0) {
+        positionU <- lapply(1:nrow(dtU), function(j){
+            dtU[j, .(
+                    strategyID = strategyID.x, 
+                    InstrumentID,
+                    TradingDay,
+                    direction, 
+                    volume = volume.y
+                )] %>% 
+            .[volume > 0]
+        }) %>% rbindlist()
+
+        tradingU <- dtU[, .(
+            TradingDay, 
+            strategyID = strategyID.x,
+            InstrumentID,
+            orderType = ifelse(direction == 'long','buy','short'),
+            volume = abs(deltaVolume),
+            stage = 'open'
+            )]
+
+        recordingU <- lapply(1:nrow(dtU), function(j){
+            dtU[j, .(
+                TradingDay = currTradingDay[1,ymd(days)],
+                tradeTime = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+                strategyID = c(strategyID.y, strategyID.x), 
+                InstrumentID,
+                direction = c(ifelse(direction == 'long', 'short', 'long'),
+                              direction),
+                offset = c('平仓','开仓'),
+                volume = abs(volume.y),
+                price = c(-1,1)
+                )] %>% 
+            .[volume > 0]
+        }) %>% rbindlist()
+    }
+
+    if (nrow(dtM) != 0) {
+        positionM <- lapply(1:nrow(dtM), function(j){
+            dtM[j, .(
+                    strategyID = strategyID.x, 
+                    InstrumentID,
+                    TradingDay,
+                    direction, volume = volume.x
+                )]
+        }) %>% rbindlist()
+
+        recordingM <- lapply(1:nrow(dtM), function(j){
+            dtM[j, .(
+                TradingDay = currTradingDay[1,ymd(days)],
+                tradeTime = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+                strategyID = c(strategyID.y, strategyID.x), 
+                InstrumentID,
+                direction = c(ifelse(direction == 'long', 'short', 'long'),
+                              direction),
+                offset = c('平仓','开仓'),
+                volume = abs(volume.x),
+                price = c(-1,1)
+                )]
+        }) %>% rbindlist()
+    }
+
+    if (nrow(dtL) != 0) {
+        positionL <- lapply(1:nrow(dtL), function(j){
+            dtL[j, .(
+                    strategyID = strategyID.x,
+                    InstrumentID,
+                    TradingDay,
+                    direction, volume = volume.x
+                )] %>% 
+            .[volume > 0]
+        }) %>% rbindlist()
+
+        tradingL <- dtL[, .(
+            TradingDay = currTradingDay[1,ymd(days)], 
+            strategyID = strategyID.y, 
+            InstrumentID,
+            orderType = ifelse(direction == 'long','sell','cover'),
+            volume = abs(deltaVolume),
+            stage = 'close'
+            )]
+
+        recordingL <- lapply(1:nrow(dtL), function(j){
+            dtL[j, .(
+                TradingDay = currTradingDay[1,ymd(days)],
+                tradeTime = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+                strategyID = c(strategyID.y, strategyID.x), 
+                InstrumentID,
+                direction = c(ifelse(direction == 'long', 'sell', 'cover'),
+                              direction),
+                offset = c('平仓','开仓'),
+                volume = abs(volume.x),
+                price = c(-1,1)
+                )] %>% 
+            .[volume > 0]
+        }) %>% rbindlist()
+    }
+
+    position <- list(positionU, positionM, positionL) %>% rbindlist()
+    trading <- list(tradingU, tradingL) %>% rbindlist()
+    recording <- list(recordingU, recordingM, recordingL) %>% rbindlist()
+
+    if (nrow(position) != 0) {
+        ## 获取 HO 的持仓信息
+        positionHO <- mysqlQuery(
+            db = accountDB,
+            query = "select * from positionInfo
+                    where strategyID = 'HOStrategy'
+                    and TradingDay = (select min(TradingDay)
+                                      from positionInfo
+                                      where strategyID = 'HOStrategy')") %>% 
+            .[, TradingDay := ymd(TradingDay)]
+        ## 情况原来的持仓信息
+        mysqlSend(
+            db = accountDB,
+            query = paste(
+                "delete from positionInfo
+                where strategyID = 'HOStrategy'
+                and TradingDay =",
+                positionHO[, gsub('-', '', unique(TradingDay))]
+                ))
+
+        for (i in 1:nrow(positionHO)) {
+            id <- positionHO[i, InstrumentID]
+            if (id %in% position[, InstrumentID]) {
+                positionHO[i, volume := volume - 
+                              position[InstrumentID == id,volume]]
+            }
+        }
+        positionHO <- positionHO[volume > 0]
+
+        res <- list(position, positionHO) %>% rbindlist()
+        mysqlWrite(db = accountDB, tbl = 'positionInfo', data = res)
+    }
+
+    if (nrow(trading) != 0) {
+        tradingHO <- trading[strategyID == 'HOStrategy']
+        tradingOI <- trading[strategyID == 'OIStrategy']
+
+        if (nrow(tradingOI) != 0) {
+            mysqlWrite(db = accountDB, tbl = 'tradingOrders', data = tradingOI)
+        }
+
+        if (nrow(tradingHO) != 0) {
+            ## 情况原来的持仓信息
+            mysqlSend(
+                db = accountDB,
+                query = paste(
+                    "delete from tradingOrders
+                    where strategyID = 'HOStrategy'
+                    and stage = 'close'
+                    and TradingDay =",
+                    closeHO[, gsub('-', '', unique(TradingDay))])
+                )
+
+            for (i in 1:nrow(closeHO)) {
+                id <- closeHO[i, InstrumentID]
+                if (id %in% tradingHO[,InstrumentID]) {
+                    closeHO[i, volume := volume - tradingHO[InstrumentID == id, volume]]
+                }
+            }
+            closeHO <- closeHO[volume > 0] %>% 
+                .[, direction := NULL]
+        }
+
+        res <- list(tradingOI, closeHO) %>% rbindlist()
+        mysqlWrite(db = accountDB, tbl = 'tradingOrders', data = res)
+    }
+
+    if (nrow(recording) != 0) {
+        recordingHO <- recording[strategyID == 'HOStrategy']
+        recordingOI <- recording[strategyID == 'OIStrategy']
+
+        if (nrow(recordingOI) != 0) {
+            mysqlWrite(db = accountDB, tbl = 'tradingInfo', data = recordingOI)
+        }
+
+        if (nrow(recordingHO) != 0) {
+            tmpRecording <- mysqlQuery(
+                db = accountDB,
+                query = paste(
+                    "select * from tradingInfo
+                    where abs(price) = 1
+                    and offset = '平仓'
+                    and strategyID = 'HOStrategy'
+                    and TradingDay =",
+                    currTradingDay[1,days]
+                    ))
+        ## 情况原来的持仓信息
+        mysqlSend(
+            db = accountDB,
+            query = paste(
+                    "select * from tradingInfo
+                    where abs(price) = 1
+                    and offset = '平仓'
+                    and strategyID = 'HOStrategy'
+                    and TradingDay =",
+                    currTradingDay[1,days])
+            )
+
+            if (nrow(tmpRecording) != 0) {
+                for (i in 1:nrow(tmpRecording)) {
+                    id <- tmpRecording[i,InstrumentID]
+                    dirc <- tmpRecording[i,direction]
+                    if (id %in% recordingHO[,InstrumentID] &
+                        dirc %in% recordingHO[i,direction]) {
+                        tmpRecording[i, volume := volume +
+                            recordingHO[InstrumentID == id & direction == dirc,
+                                        volume]]
+                    }
+                }
+            }
+            mysqlWrite(db = accountDB, tbl = 'tradingInfo', data = tmpRecording)
+        }
+
+    }
+
 }
