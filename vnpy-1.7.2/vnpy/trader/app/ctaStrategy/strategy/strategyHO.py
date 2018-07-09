@@ -84,9 +84,8 @@ class HOStrategy(CtaTemplate):
     vtOrderIDListOpen       = []       # 开盘的订单
     vtOrderIDListClose      = []       # 收盘的订单
     vtOrderIDListFailedInfo = []       # 失败的合约订单存储
-    vtOrderIDListUpperLower = []       # 涨跌停价格成交的订单
-    vtOrderIDListUpperLowerCum = []    # 涨跌停价格成交的订单
-    vtOrderIDListUpperLowerTempCum = []    # 涨跌停价格成交的订单
+    vtOrderIDListUpperLower = []        # 涨跌停价格成交的订单
+    vtOrderIDListUpperLowerCum = []     # 累计的涨跌停价格成交的订单:>> workingInfo
     vtOrderIDListAll        = []       # 所有订单集合
     ## -------------------------------------------------------------------------
 
@@ -112,7 +111,7 @@ class HOStrategy(CtaTemplate):
         self.tradingStartCounter = 0
         self.tradingOpenHour    = [21,9]
         self.tradingOpenMinute1 = 0
-        self.tradingOpenMinute2 = 40
+        self.tradingOpenMinute2 = 10
 
         self.tradingCloseHour    = 14
         self.tradingCloseMinute1 = 50
@@ -277,7 +276,9 @@ class HOStrategy(CtaTemplate):
             return 
         elif tick.datetime <= (datetime.now() - timedelta(seconds=10)):
             return
-        # return
+        ## 控制下单速度
+        elif ((datetime.now() - self.tickTimer[tick.vtSymbol]).seconds < 1):
+            return
         # =====================================================================
 
         id = tick.vtSymbol
@@ -353,7 +354,7 @@ class HOStrategy(CtaTemplate):
         self.stratTrade['InstrumentID'] = vtSymbol
         self.stratTrade['strategyID']   = self.strategyID
         self.stratTrade['tradeTime']    = datetime.now().strftime('%Y-%m-%d') + " " + self.stratTrade['tradeTime']
-        self.stratTrade['TradingDay']   = self.ctaEngine.tradingDate
+        self.stratTrade['TradingDay']   = self.tradingDate
 
         ## ---------------------------------------------------------------------
         if self.stratTrade['offset'] == u'开仓':
@@ -386,23 +387,23 @@ class HOStrategy(CtaTemplate):
             tempKey in self.tradingOrdersOpen.keys()):
             # ------------------------------------------------------------------
             self.tradingOrdersOpen[tempKey]['volume'] -= self.stratTrade['volume']
-            if self.tradingOrdersOpen[tempKey]['volume'] == 0:
+            if self.tradingOrdersOpen[tempKey]['volume'] <= 0:
                 self.tradingOrdersOpen.pop(tempKey, None)
-                self.tradedOrdersOpen[tempKey] = tempKey
+                # self.tradedOrdersOpen[tempKey] = tempKey
             # ------------------------------------------------------------------
         elif (vtOrderID in self.vtOrderIDListClose and 
               tempKey in self.tradingOrdersClose.keys()):
             # ------------------------------------------------------------------
             self.tradingOrdersClose[tempKey]['volume'] -= self.stratTrade['volume']
-            if self.tradingOrdersClose[tempKey]['volume'] == 0:
+            if self.tradingOrdersClose[tempKey]['volume'] <= 0:
                 self.tradingOrdersClose.pop(tempKey, None)
-                self.tradedOrdersClose[tempKey] = tempKey
+                # self.tradedOrdersClose[tempKey] = tempKey
             # ------------------------------------------------------------------
         elif (vtOrderID in self.vtOrderIDListFailedInfo and 
               tempKey in self.tradingOrdersFailedInfo.keys()):
             # ------------------------------------------------------------------
             self.tradingOrdersFailedInfo[tempKey]['volume'] -= self.stratTrade['volume']
-            if self.tradingOrdersFailedInfo[tempKey]['volume'] == 0:
+            if self.tradingOrdersFailedInfo[tempKey]['volume'] <= 0:
                 self.tradingOrdersFailedInfo.pop(tempKey, None)
             # ------------------------------------------------------------------
             ## 需要更新一下 failedInfo
