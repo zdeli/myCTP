@@ -161,6 +161,7 @@ class CtaTemplate(object):
         """Constructor"""
         ## 通过 ctaEngine 调用 mainEngine
         self.ctaEngine = ctaEngine
+        self.dataBase = self.ctaEngine.mainEngine.dataBase
 
         ## =====================================================================
         ## 配置文件
@@ -195,7 +196,7 @@ class CtaTemplate(object):
 
         ## =====================================================================
         ## 把　MySQL 数据库的　TradingDay　调整为　datetime 格式
-        conn = vtFunction.dbMySQLConnect(self.ctaEngine.mainEngine.dataBase)
+        conn = vtFunction.dbMySQLConnect(self.dataBase)
         cursor = conn.cursor()
         cursor.execute("""
                         ALTER TABLE failedInfo
@@ -392,7 +393,7 @@ class CtaTemplate(object):
         ##@param stage: 1.'open', 2.'close'
         ##@param tradingOrdersX: 1,'tradingOrdersOpen', 2.'tradingOrdersClose'
         ## ---------------------------------------------------------------------
-        tempOrders = vtFunction.dbMySQLQuery(self.ctaEngine.mainEngine.dataBase,
+        tempOrders = vtFunction.dbMySQLQuery(self.dataBase,
             """
             SELECT *
             FROM tradingOrders
@@ -520,7 +521,7 @@ class CtaTemplate(object):
             return
         ## =====================================================================
         ## MySQL 数据库保存的活跃订单
-        mysqlWorkingInfo = vtFunction.dbMySQLQuery(self.ctaEngine.mainEngine.dataBase,
+        mysqlWorkingInfo = vtFunction.dbMySQLQuery(self.dataBase,
                             """
                             SELECT *
                             FROM workingInfo
@@ -566,7 +567,7 @@ class CtaTemplate(object):
         """
         ## =====================================================================
         ## MySQL 数据库保存的活跃订单
-        mysqlWorkingInfo = vtFunction.dbMySQLQuery(self.ctaEngine.mainEngine.dataBase,
+        mysqlWorkingInfo = vtFunction.dbMySQLQuery(self.dataBase,
                             """
                             SELECT *
                             FROM workingInfo
@@ -1198,9 +1199,9 @@ class CtaTemplate(object):
             subprocess.call(['Rscript',
                              os.path.join(self.ctaEngine.mainEngine.ROOT_PATH,
                              'vnpy/trader/app/ctaStrategy/Rscripts',
-                             'end_signal.R'),
+                             'end.R'),
                              self.ctaEngine.mainEngine.ROOT_PATH, 
-                             self.ctaEngine.mainEngine.dataBase], 
+                             self.dataBase], 
                              shell = False)
 
         ## =====================================================================
@@ -1212,13 +1213,9 @@ class CtaTemplate(object):
              (30 <= s <= 59 and s%10 == 0) ):
             ## -----------------------------------------------------------------
             try:
-                conn = vtFunction.dbMySQLConnect(self.ctaEngine.mainEngine.dataBase)
-                cursor = conn.cursor()
-                cursor.execute("""
-                                TRUNCATE TABLE workingInfo
-                               """)
-                conn.commit()
-                conn.close()
+                vtFunction.dbMySQLSend(
+                    self.dataBase,
+                    "TRUNCATE TABLE workingInfo")
             except:
                 self.writeCtaLog(u'workingInfo 清理数据 出错',
                                  logLevel = ERROR) 
@@ -1235,7 +1232,7 @@ class CtaTemplate(object):
         if not tradingOrders:
             return
         
-        tempWorkingInfo = vtFunction.dbMySQLQuery(self.ctaEngine.mainEngine.dataBase,
+        tempWorkingInfo = vtFunction.dbMySQLQuery(self.dataBase,
                                     """
                                     SELECT *
                                     FROM workingInfo
@@ -1262,15 +1259,12 @@ class CtaTemplate(object):
 
         ## ---------------------------------------------------------------------
         try:
-            conn = vtFunction.dbMySQLConnect(self.ctaEngine.mainEngine.dataBase)
-            cursor = conn.cursor()
-            cursor.execute("""
-                            DELETE FROM workingInfo
-                            WHERE strategyID = '%s'
-                            AND stage = '%s'
-                           """ %(self.strategyID, stage))
-            conn.commit()
-            conn.close()
+            query = """
+                   DELETE FROM workingInfo
+                   WHERE strategyID = '%s'
+                   AND stage = '%s'
+                   """ %(self.strategyID, stage)
+            vtFunction.dbMySQLSend(self.dataBase, query)
         except:
             self.writeCtaLog(u'workingInfo 活跃订单 写入 MySQL 数据库出错',
                                  logLevel = ERROR)
@@ -1321,7 +1315,7 @@ class CtaTemplate(object):
         ## ---------------------------------------------------------------------
         
         ## =====================================================================
-        mysqlInfoTradingOrders = vtFunction.dbMySQLQuery(self.ctaEngine.mainEngine.dataBase,
+        mysqlInfoTradingOrders = vtFunction.dbMySQLQuery(self.dataBase,
                                 """
                                 SELECT *
                                 FROM tradingOrders
@@ -1334,7 +1328,7 @@ class CtaTemplate(object):
             return
         
         ## ---------------------------------------------------------------------
-        conn = vtFunction.dbMySQLConnect(self.ctaEngine.mainEngine.dataBase)
+        conn = vtFunction.dbMySQLConnect(self.dataBase)
         cursor = conn.cursor()
         
         for i in xrange(len(mysqlInfoTradingOrders)):
@@ -1342,11 +1336,11 @@ class CtaTemplate(object):
             if tempVolume == 0:
                 cursor.execute("""
                                 DELETE FROM tradingOrders
-                                WHERE strategyID = %s
+                                WHERE strategyID = '%s'
                                 AND InstrumentID = %s
                                 AND volume = %s
-                                AND orderType = %s
-                               """, (self.strategyID, self.stratTrade['vtSymbol'],
+                                AND orderType = '%s'
+                               """ %(self.strategyID, self.stratTrade['vtSymbol'],
                                 mysqlInfoTradingOrders.at[i,'volume'],
                                 tempDirection))
                 conn.commit()
@@ -1354,11 +1348,11 @@ class CtaTemplate(object):
                 cursor.execute("""
                                 UPDATE tradingOrders
                                 SET volume = %s
-                                WHERE strategyID = %s
-                                AND InstrumentID = %s
+                                WHERE strategyID = '%s'
+                                AND InstrumentID = '%s'
                                 AND volume = %s
-                                AND orderType = %s
-                               """, (tempVolume, self.strategyID, 
+                                AND orderType = '%s'
+                               """ %(tempVolume, self.strategyID, 
                                 self.stratTrade['vtSymbol'],
                                 mysqlInfoTradingOrders.at[i,'volume'],
                                 tempDirection))
@@ -1382,12 +1376,12 @@ class CtaTemplate(object):
         ## 把账户信息写入 MysQL 数据库
         ## =====================================================================
         self.ctaEngine.mainEngine.dataEngine.getIndicatorInfo(
-            dbName = self.ctaEngine.mainEngine.dataBase,
+            dbName = self.dataBase,
             initialCapital = self.ctaEngine.mainEngine.initialCapital,
             flowCapital = self.ctaEngine.mainEngine.flowCapital)
         ## =====================================================================
         ## 把所有下单记录写入 MySQL 数据库
-        mysqlOrderInfo = vtFunction.dbMySQLQuery(self.ctaEngine.mainEngine.dataBase,
+        mysqlOrderInfo = vtFunction.dbMySQLQuery(self.dataBase,
                         """
                         SELECT *
                         FROM orderInfo
@@ -1416,16 +1410,13 @@ class CtaTemplate(object):
         if len(df) != 0:
             ## -----------------------------------------------------------------
             try:
-                conn = vtFunction.dbMySQLConnect(self.ctaEngine.mainEngine.dataBase)
-                cursor = conn.cursor()
-                ## 清空记录
-                cursor.execute("""
-                                DELETE FROM orderInfo
-                                WHERE strategyID = %s
-                                AND TradingDay = %s
-                               """, (self.strategyID, self.ctaEngine.tradingDay))
-                conn.commit()
-                conn.close()
+                query = """
+                        DELETE FROM orderInfo
+                        WHERE strategyID = '%s'
+                        AND TradingDay = %s
+                        """ %(self.strategyID, self.ctaEngine.tradingDay)
+                vtFunction.dbMySQLSend(self.dataBase, query)
+
                 ## 写入记录
                 ## 去掉重复的行
                 df = df.drop_duplicates().reset_index(drop = True)
@@ -1484,32 +1475,28 @@ class CtaTemplate(object):
             ## -----------------------------------------------------------------------------
             if tempOffset == 'close':
                 try:
-                    conn = vtFunction.dbMySQLConnect(self.ctaEngine.mainEngine.dataBase)
-                    cursor = conn.cursor()
-                    cursor.execute("""
-                                    DELETE FROM positionInfo
-                                    WHERE strategyID = %s
-                                    AND InstrumentID = %s
-                                    AND TradingDay = %s
-                                    AND direction  = %s
-                                   """, (self.strategyID, self.failedOrders[k]['vtSymbol'], self.failedOrders[k]['TradingDay'], tempDirectionPos))
-                    conn.commit()
-                    conn.close()
+                    query = """
+                            DELETE FROM positionInfo
+                            WHERE strategyID = '%s'
+                            AND InstrumentID = '%s'
+                            AND TradingDay = %s
+                            AND direction  = '%s'
+                            """ %(self.strategyID, self.failedOrders[k]['vtSymbol'], 
+                                  self.failedOrders[k][' TradingDay'], tempDirectionPos)
+                    vtFunction.dbMySQLSend(self.dataBase, query)
                 except:
                     None
             ## -------------------------------------------------------------------------
         try:
             df = DataFrame(dfData, columns = self.failedInfoFields)
             ## -------------------------------------------------------------
-            conn = vtFunction.dbMySQLConnect(self.ctaEngine.mainEngine.dataBase)
-            cursor = conn.cursor()
-            cursor.execute("""
-                            DELETE FROM failedInfo
-                            WHERE strategyID = %s
-                            AND TradingDay = %s
-                           """,(self.strategyID, self.ctaEngine.tradingDay))
-            conn.commit()
-            conn.close()
+            query = """
+                    DELETE FROM failedInfo
+                    WHERE strategyID = '%s'
+                    AND TradingDay = %s
+                    """ %(self.strategyID, self.ctaEngine.tradingDay)
+            vtFunction.dbMySQLSend(self.dataBase, query)
+
             self.saveMySQL(df = df, 
                            tbl = 'failedInfo', 
                            over = 'append',
@@ -1553,13 +1540,9 @@ class CtaTemplate(object):
                                  logLevel = ERROR)
         else:
             try:
-                conn = vtFunction.dbMySQLConnect(self.ctaEngine.mainEngine.dataBase)
-                cursor = conn.cursor()
-                cursor.execute("""
-                                TRUNCATE TABLE lastTickInfo
-                               """)
-                conn.commit()
-                conn.close()
+                vtFunction.dbMySQLSend(
+                    self.dataBase, 
+                    "TRUNCATE TABLE lastTickInfo")
             except:
                 self.writeCtaLog(u'updateLastTickInfo 清空 MySQL 数据库出错',
                                  logLevel = ERROR)
@@ -1578,7 +1561,7 @@ class CtaTemplate(object):
         ## =====================================================================
         ## mysqlPositionInfo: 存储在 mysql 数据库的持仓信息，需要更新
         mysqlPositionInfo = vtFunction.dbMySQLQuery(
-            self.ctaEngine.mainEngine.dataBase,
+            self.dataBase,
             """
             SELECT *
             FROM positionInfo
@@ -1612,14 +1595,12 @@ class CtaTemplate(object):
             mysqlPositionInfo.at[tempPosInfo.index[0], 'volume'] += stratTrade['volume']
             mysqlPositionInfo = mysqlPositionInfo.loc[mysqlPositionInfo.volume != 0]
             try:
-                conn   = vtFunction.dbMySQLConnect(self.ctaEngine.mainEngine.dataBase)
-                cursor = conn.cursor()
-                cursor.execute("""
-                                DELETE FROM positionInfo
-                                WHERE strategyID = '%s'
-                               """ %(self.strategyID))
-                conn.commit()
-                conn.close()
+                query = """
+                        DELETE FROM positionInfo
+                        WHERE strategyID = '%s'
+                        """ %(self.strategyID)
+                vtFunction.dbMySQLSend(self.dataBase, query)
+
                 self.saveMySQL(df = mysqlPositionInfo, 
                                tbl = 'positionInfo', 
                                over = 'append',
@@ -1650,7 +1631,7 @@ class CtaTemplate(object):
         ## =====================================================================
         ## mysqlPositionInfo: 存储在 mysql 数据库的持仓信息，需要更新
         mysqlPositionInfo = vtFunction.dbMySQLQuery(
-            self.ctaEngine.mainEngine.dataBase,
+            self.dataBase,
             """
             SELECT *
             FROM positionInfo
@@ -1670,14 +1651,12 @@ class CtaTemplate(object):
         ## ---------------------------------------------------------------------
         ## ---------------------------------------------------------------------
         try:
-            conn   = vtFunction.dbMySQLConnect(self.ctaEngine.mainEngine.dataBase)
-            cursor = conn.cursor()
-            cursor.execute("""
-                            DELETE FROM positionInfo
-                            WHERE strategyID = '%s'
-                           """ %(self.strategyID))
-            conn.commit()
-            conn.close()
+            query = """
+                    DELETE FROM positionInfo
+                    WHERE strategyID = '%s'
+                    """ %(self.strategyID)
+            vtFunction.dbMySQLSend(self.dataBase, query)
+
             self.saveMySQL(df = mysqlPositionInfo, 
                            tbl = 'positionInfo', 
                            over = 'append',
@@ -1694,7 +1673,7 @@ class CtaTemplate(object):
     ############################################################################
     def processTradingOrdersFailedInfo(self, stratTrade):
         """处理昨日未成交失败的订单，需要更新 failedInfo"""
-        mysqlFailedInfo = vtFunction.dbMySQLQuery(self.ctaEngine.mainEngine.dataBase,
+        mysqlFailedInfo = vtFunction.dbMySQLQuery(self.dataBase,
                 """
                 SELECT *
                 FROM failedInfo
@@ -1717,14 +1696,12 @@ class CtaTemplate(object):
         ## ---------------------------------------------------------------------
         ## ---------------------------------------------------------------------
         try:
-            conn   = vtFunction.dbMySQLConnect(self.ctaEngine.mainEngine.dataBase)
-            cursor = conn.cursor()
-            cursor.execute("""
-                            DELETE FROM failedInfo
-                            WHERE strategyID = '%s'
-                           """ %(self.strategyID))
-            conn.commit()
-            conn.close()
+            query = """
+                    DELETE FROM failedInfo
+                    WHERE strategyID = '%s'
+                    """ %(self.strategyID)
+            vtFunction.dbMySQLSend(self.dataBase, query)
+
             self.saveMySQL(df = mysqlFailedInfo, 
                            tbl = 'failedInfo', 
                            over = 'append',
@@ -1738,7 +1715,7 @@ class CtaTemplate(object):
     ## 从 MySQL 数据库读取数据
     ############################################################################
     def fetchMySQL(self, query):
-        df = vtFunction.fetchMySQL(db    = self.ctaEngine.mainEngine.dataBase, 
+        df = vtFunction.fetchMySQL(db    = self.dataBase, 
                                    query = query)
         return(df)
 
@@ -1760,20 +1737,11 @@ class CtaTemplate(object):
             try:
                 query = "TRUNCATE TABLE %s" %tbl
                 vtFunction.dbMySQLSend(self.dataBase, query)
-                ## -------------------------------------------------------------
-                # conn = vtFunction.dbMySQLConnect(self.ctaEngine.mainEngine.dataBase)
-                # cursor = conn.cursor()
-                # cursor.execute("""
-                #                 TRUNCATE TABLE %s
-                #                """ %tbl)
-                # conn.commit()
-                # conn.close()
-                ## -------------------------------------------------------------
             except:
                 print 'ctaTemplate.saveMySQL() 写入数据库失败'
         ## -------------------------------------------------------------
         vtFunction.saveMySQL(df   = df, 
-                             db   = self.ctaEngine.mainEngine.dataBase, 
+                             db   = self.dataBase, 
                              tbl  = tbl, 
                              over = over,
                              sourceID = sourceID)
