@@ -281,7 +281,9 @@ class HOStrategy(CtaTemplate):
             return
         # =====================================================================
 
-        id = tick.vtSymbol
+        cdef:
+            char *id = tick.vtSymbol
+            str tempPriceType
 
         ## =====================================================================
         if (self.tradingStart and 
@@ -341,11 +343,10 @@ class HOStrategy(CtaTemplate):
     #----------------------------------------------------------------------
     def onTrade(self, trade):
         """处理成交订单"""
-        self.tickTimer[trade.vtSymbol] = datetime.now()
-        ## ---------------------------------------------------------------------
-
-        vtSymbol = trade.vtSymbol
-        vtOrderID = trade.vtOrderID
+        cdef:
+            char *vtSymbol = trade.vtSymbol
+            char *vtOrderID = trade.vtOrderID
+            str tempKey, tempDirection
 
         ## =====================================================================
         ## 0. 数据预处理
@@ -462,7 +463,11 @@ class HOStrategy(CtaTemplate):
 
         ## -----------------------
         n = datetime.now()
-        h,m,s = n.hour, n.minute, n.second
+        ## -----------------------
+        cdef:
+            int h = n.hour
+            int m = n.minute
+            int s = n.second
         if (s % 5 != 0):
             return
         ## -----------------------
