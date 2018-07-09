@@ -120,11 +120,10 @@ class CtaTemplate(object):
     vtOrderIDListClose      = []        # 收盘的订单
     vtOrderIDListFailedInfo = []        # 失败的合约订单存储
     vtOrderIDListUpperLower = []        # 涨跌停价格成交的订单
-    vtOrderIDListUpperLowerCum = []    # 涨跌停价格成交的订单
-    vtOrderIDListUpperLowerTempCum = []    # 涨跌停价格成交的订单
-    vtOrderIDListWinner     = []       # 止盈平仓单
-    vtOrderIDListTempWinner = []       # 止盈平仓单
-    vtOrderIDListAll        = []       # 所有订单集合
+    vtOrderIDListUpperLowerCum = []     # 累计的涨跌停价格成交的订单:>> workingInfo
+    vtOrderIDListWinner     = []        # 止盈平仓单
+    vtOrderIDListTempWinner = []        # 止盈平仓单
+    vtOrderIDListAll        = []        # 所有订单集合
     ## -------------------------------------------------------------------------
     
     ## -------------------------------------------------------------------------
@@ -162,6 +161,7 @@ class CtaTemplate(object):
         ## 通过 ctaEngine 调用 mainEngine
         self.ctaEngine = ctaEngine
         self.dataBase = self.ctaEngine.mainEngine.dataBase
+        self.dataEngine = self.ctaEngine.mainEngine.dataEngine
 
         ## =====================================================================
         ## 配置文件
@@ -178,8 +178,9 @@ class CtaTemplate(object):
 
         ## =====================================================================
         ## 交易时点
-        self.tradingDay          = self.ctaEngine.tradingDay
-        self.lastTradingDay      = self.ctaEngine.lastTradingDay
+        self.tradingDay     = self.ctaEngine.tradingDay
+        self.lastTradingDay = self.ctaEngine.lastTradingDay
+        self.tradingDate    = self.ctaEngine.tradingDate
 
         self.tradingStartCounter = 0
         self.tradingOpenHour    = [21,9]
@@ -192,6 +193,8 @@ class CtaTemplate(object):
 
         self.accountID           = globalSetting.accountID
         self.randomNo            = 50 + random.randint(-5,5)    ## 随机间隔多少秒再下单
+        
+        self.tickInfo = self.ctaEngine.tickInfo
         ## =====================================================================
 
         ## =====================================================================
@@ -400,7 +403,7 @@ class CtaTemplate(object):
             WHERE strategyID = '%s'
             AND TradingDay = '%s'
             AND stage = '%s'
-            """ %(self.strategyID, self.ctaEngine.tradingDate, stage))
+            """ %(self.strategyID, self.tradingDate, stage))
 
         cdef dict tradingOrdersX = {}
         ## ---------------------------------------------------------------------
@@ -408,8 +411,7 @@ class CtaTemplate(object):
             return tradingOrdersX
 
         cdef:
-            int volume_0, volume_1, volume_2
-            int totalVolume
+            int volume_0, volume_1, volume_2, totalVolume
             str tempKey
             int i
 
@@ -598,7 +600,7 @@ class CtaTemplate(object):
     ############################################################################
     def priceBetweenUpperLower(self, price, str vtSymbol):
         ## -----------------------------------------------------------
-        cdef float tempPriceTick = self.ctaEngine.tickInfo[vtSymbol]['priceTick']
+        cdef float tempPriceTick = self.tickInfo[vtSymbol]['priceTick']
         ## -----------------------------------------------------------
         cdef float tempUpperLimit = self.ctaEngine.lastTickDict[vtSymbol]['upperLimit'] - tempPriceTick
         cdef float tempLowerLimit = self.ctaEngine.lastTickDict[vtSymbol]['lowerLimit'] + tempPriceTick
@@ -891,7 +893,6 @@ class CtaTemplate(object):
                 tradingOrders[i]['lastTimer'] = datetime.now()
 
 
-
     def prepareSplit(self, 
                      str vtSymbol, 
                      dict tradingOrders, 
@@ -900,11 +901,9 @@ class CtaTemplate(object):
                      int addTick = 0, 
                      float discount = 0.0):
         ## =========================================================================
-        cdef list tradingOrderList
-
         tradingOrderList = [k for k in tradingOrders.keys() 
-                             if tradingOrders[k]['vtSymbol'] == vtSymbol and
-                                tradingOrders[k]['volume'] != 0]
+                              if tradingOrders[k]['vtSymbol'] == vtSymbol and
+                                 tradingOrders[k]['volume'] > 0]
 
         if not tradingOrderList:
             return
@@ -912,18 +911,16 @@ class CtaTemplate(object):
         #        (datetime.now() - tradingOrders[tradingOrderList[0]]['lastTimer']).seconds < self.randomNo ):
         #     return
 
-        allOrders = self.ctaEngine.mainEngine.getAllOrdersDataFrame()
+        # allOrders = self.ctaEngine.mainEngine.getAllOrdersDataFrame()
+        allOrders = self.dataEngine.getAllOrdersDataFrame()
 
         cdef:
             int tempWorkingVolume = 0
             float remainingMinute
             int tempAddTick
             float tempDiscount
-            int tradingVolume
-            int remainingVolume
-            int tempVolume
-            int h = datetime.now().hour
-            int m = datetime.now().minute
+            int tradingVolume, remainingVolume, tempVolume
+            int h = datetime.now().hour, m = datetime.now().minute
 
         if len(allOrders):
             tempWorkingOrders = allOrders[(allOrders['vtSymbol'] == vtSymbol) & 
@@ -1025,7 +1022,7 @@ class CtaTemplate(object):
         ## 基本信息
         ## ---------------------------------------------------------------------
         id = orderDict["vtSymbol"].encode('ascii','ignore')
-        tempPriceTick = self.ctaEngine.tickInfo[id]['priceTick']
+        tempPriceTick = self.tickInfo[id]['priceTick']
         tempDirection = orderDict["direction"].encode('ascii','ignore')
         if volume:
             tempVolume = volume
@@ -1070,6 +1067,19 @@ class CtaTemplate(object):
         elif tempDirection in ["short","sell"]:
             tempPrice = self.priceBetweenUpperLower(
                 tempBestPrice * (1+discount) - tempPriceTick * addTick, id)
+        ## =====================================================================
+
+        ## =====================================================================
+        ## 如果在 OIStrategy 超过一定的涨跌幅限制
+        ## 则不要下单
+        if (self.strategyID in ['OIStrategy'] and 
+            ( (tempDirection == 'buy' and 
+               tempPrice > self.ctaEngine.lastTickDict[id]["upperLimit"] * (1-0.01)) or 
+              (tempDirection == 'short' and 
+               tempPrice < self.ctaEngine.lastTickDict[id]["lowerLimit"] * (1+0.01)) )):
+            self.writeCtaLog(u'%s %s@%s 接近涨跌幅上限 ±1%%.' %(id, tempDirection, tempPrice), ERROR)
+            self.tickTimer[id] = tradingOrders[id+'-'+tempDirection]['lastTimer'] = datetime.now() - timedelta(seconds = 180)
+            return
         ## =====================================================================
 
         ## =====================================================================
@@ -1168,7 +1178,6 @@ class CtaTemplate(object):
                                  self.vtOrderIDListClose + \
                                  self.vtOrderIDListUpperLower + \
                                  self.vtOrderIDListUpperLowerCum + \
-                                 self.vtOrderIDListUpperLowerTempCum + \
                                  self.vtOrderIDListWinner + \
                                  self.vtOrderIDListTempWinner:
                     if vtOrderID in allOrders.loc[allOrders.status.isin([u'未成交',u'部分成交'])].vtOrderID.values:
@@ -1195,7 +1204,7 @@ class CtaTemplate(object):
             10 <= s <= 20 and 
             self.ctaEngine.mainEngine.multiStrategy and 
             (s == 19 or s % 5 == 0)):
-            self.writeCtaLog('Rscript end_signal.R')
+            self.writeCtaLog('Rscript end.R')
             subprocess.call(['Rscript',
                              os.path.join(self.ctaEngine.mainEngine.ROOT_PATH,
                              'vnpy/trader/app/ctaStrategy/Rscripts',
@@ -1336,11 +1345,11 @@ class CtaTemplate(object):
             if tempVolume == 0:
                 cursor.execute("""
                                 DELETE FROM tradingOrders
-                                WHERE strategyID = '%s'
+                                WHERE strategyID = %s
                                 AND InstrumentID = %s
                                 AND volume = %s
-                                AND orderType = '%s'
-                               """ %(self.strategyID, self.stratTrade['vtSymbol'],
+                                AND orderType = %s
+                               """,(self.strategyID, self.stratTrade['vtSymbol'],
                                 mysqlInfoTradingOrders.at[i,'volume'],
                                 tempDirection))
                 conn.commit()
@@ -1348,11 +1357,11 @@ class CtaTemplate(object):
                 cursor.execute("""
                                 UPDATE tradingOrders
                                 SET volume = %s
-                                WHERE strategyID = '%s'
-                                AND InstrumentID = '%s'
+                                WHERE strategyID = %s
+                                AND InstrumentID = %s
                                 AND volume = %s
-                                AND orderType = '%s'
-                               """ %(tempVolume, self.strategyID, 
+                                AND orderType = %s
+                               """,(tempVolume, self.strategyID, 
                                 self.stratTrade['vtSymbol'],
                                 mysqlInfoTradingOrders.at[i,'volume'],
                                 tempDirection))
@@ -1375,7 +1384,7 @@ class CtaTemplate(object):
 
         ## 把账户信息写入 MysQL 数据库
         ## =====================================================================
-        self.ctaEngine.mainEngine.dataEngine.getIndicatorInfo(
+        self.dataEngine.getIndicatorInfo(
             dbName = self.dataBase,
             initialCapital = self.ctaEngine.mainEngine.initialCapital,
             flowCapital = self.ctaEngine.mainEngine.flowCapital)
@@ -1388,7 +1397,7 @@ class CtaTemplate(object):
                         WHERE strategyID = '%s'
                         AND TradingDay = %s
                        """ %(self.strategyID, self.ctaEngine.tradingDay))
-        stratOrderIDListAll = self.vtOrderIDListOpen + self.vtOrderIDListClose + self.vtOrderIDListFailedInfo + self.vtOrderIDListUpperLower
+        stratOrderIDListAll = self.vtOrderIDListOpen + self.vtOrderIDListClose + self.vtOrderIDListFailedInfo + self.vtOrderIDListUpperLower + self.vtOrderIDListUpperLowerCum
         tempOrderIDList = [k for k in stratOrderIDListAll if k not in mysqlOrderInfo['vtOrderID'].values]
         ## ---------------------------------------------------------------------
         if len(tempOrderIDList) == 0:
@@ -1400,7 +1409,7 @@ class CtaTemplate(object):
             tempOrderInfo['strategyID'] = self.strategyID
             df = df.append(tempOrderInfo[self.orderInfoFields], ignore_index=True)
         df = df[self.orderInfoFields]
-        df['TradingDay'] = self.ctaEngine.tradingDate
+        df['TradingDay'] = self.tradingDate
         df['strategyID'] = self.strategyID
         df = df[['TradingDay'] + self.orderInfoFields]
         ## 改名字
