@@ -15,12 +15,11 @@ from vnpy.trader.vtEvent import *
 from vnpy.trader import vtFunction
 ## -----------------------------------------------------------------------------
 from logging import INFO, ERROR
-import pandas as pd
+from pandas import DataFrame
 from pandas.io import sql
 
 from datetime import datetime,time,timedelta
-import time
-import pprint
+from pprint import pprint,pformat
 from copy import copy
 import math,random
 import re,ast,csv,ujson
@@ -49,7 +48,7 @@ class OIStrategy(CtaTemplate):
     ## 策略的基本变量，由引擎管理
     trading      = False                    # 是否启动交易，由引擎管理
     tradingStart = False                    # 开盘启动交易
-    tradingStartSplit = False
+    tradingSplit = False
     tradingBetween = False
     tradingEnd   = False                    # 收盘开启交易
     tickTimer    = {}                  # 计时器, 用于记录单个合约发单的间隔时间
@@ -90,8 +89,7 @@ class OIStrategy(CtaTemplate):
     vtOrderIDListClose      = []       # 收盘的订单
     vtOrderIDListFailedInfo = []       # 失败的合约订单存储
     vtOrderIDListUpperLower = []       # 涨跌停价格成交的订单
-    vtOrderIDListUpperLowerCum = []    # 涨跌停价格成交的订单
-    vtOrderIDListUpperLowerTempCum = []    # 涨跌停价格成交的订单
+    vtOrderIDListUpperLowerCum = []     # 累计的涨跌停价格成交的订单:>> workingInfo
     vtOrderIDListWinner     = []       # 止盈平仓单
     vtOrderIDListTempWinner = []       # 止盈平仓单
     vtOrderIDListAll        = []       # 所有订单集合
@@ -136,7 +134,7 @@ class OIStrategy(CtaTemplate):
 
         ## =====================================================================
         ## 子订单的拆单比例实现
-        if self.initialCapital >= 0.8e7:
+        if self.initialCapital >= 0.5e7:
             self.subOrdersLevel = {
                               'level0':{'weight': 0.20, 'deltaTick': 0},
                               'level1':{'weight': 0.45, 'deltaTick': 1},
@@ -180,7 +178,7 @@ class OIStrategy(CtaTemplate):
         ## =====================================================================
         ## 上一个交易日未成交订单
         self.failedInfo = vtFunction.dbMySQLQuery(
-            self.ctaEngine.mainEngine.dataBase,
+            self.dataBase,
             """
             SELECT *
             FROM failedInfo
@@ -192,7 +190,7 @@ class OIStrategy(CtaTemplate):
         ## 查看当日已经交易的订单
         ## ---------------------------------------------------------------------
         # self.tradingInfo = vtFunction.dbMySQLQuery(
-        #     self.ctaEngine.mainEngine.dataBase,
+        #     self.dataBase,
         #     """
         #     SELECT *
         #     FROM tradingInfo
@@ -203,13 +201,13 @@ class OIStrategy(CtaTemplate):
         ## =====================================================================
         ## 涨跌停的订单
         temp = vtFunction.dbMySQLQuery(
-            self.ctaEngine.mainEngine.dataBase,
+            self.dataBase,
             """
             SELECT *
             FROM UpperLowerInfo
             WHERE strategyID = '%s'
             AND TradingDay = '%s'
-            """ %(self.strategyID, self.ctaEngine.tradingDate))
+            """ %(self.strategyID, self.tradingDate))
         if len(temp):
             for i in xrange(len(temp)):
                 self.vtOrderIDListUpperLower.extend(ast.literal_eval(temp.ix[i,'vtOrderIDList']))
@@ -218,18 +216,18 @@ class OIStrategy(CtaTemplate):
         ## =====================================================================
         ## 涨跌停的订单
         tempCum = vtFunction.dbMySQLQuery(
-            self.ctaEngine.mainEngine.dataBase,
+            self.dataBase,
             """
             SELECT *
             FROM workingInfo
             WHERE strategyID = '%s'
             AND TradingDay = '%s'
             AND stage = 'ul'
-            """ %(self.strategyID, self.ctaEngine.tradingDate))
+            """ %(self.strategyID, self.tradingDate))
         if len(tempCum):
             for i in xrange(len(tempCum)):
                 ## -------------------------------------------------------------
-                self.vtOrderIDListUpperLowerTempCum.extend(
+                self.vtOrderIDListUpperLowerCum.extend(
                     ast.literal_eval(tempCum.ix[i,'vtOrderIDList']))
                 ## -------------------------------------------------------------
                 tempKey = tempCum.loc[i, 'vtSymbol'] + '-' + tempCum.loc[i, 'orderType']
@@ -247,21 +245,21 @@ class OIStrategy(CtaTemplate):
         ## =====================================================================
         ## 止盈止损的订单
         # tempWinner = vtFunction.dbMySQLQuery(
-        #     self.ctaEngine.mainEngine.dataBase,
+        #     self.dataBase,
         #     """
         #     SELECT *
         #     FROM workingInfo
         #     WHERE strategyID = '%s'
         #     AND TradingDay = '%s'
         #     AND stage = 'winner'
-        #     """ %(self.strategyID, self.ctaEngine.tradingDate))
+        #     """ %(self.strategyID, self.tradingDate))
         # if len(tempWinner):
         #     for i in xrange(len(tempWinner)):
         #         self.vtOrderIDListTempWinner.extend(ast.literal_eval(tempWinner.ix[i,'vtOrderIDList']))
         
         # ## =====================================================================
         # mysqlpositionInfo = vtFunction.dbMySQLQuery(
-        #     self.ctaEngine.mainEngine.dataBase,
+        #     self.dataBase,
         #     """
         #     SELECT *
         #     FROM positionInfo
@@ -315,7 +313,7 @@ class OIStrategy(CtaTemplate):
         #         k = tradingSignal.at[i, 'vtSymbol']
         #         self.winnerParam[k] = dict(tradingSignal.iloc[i])
         #         self.winnerParam[k]['param'] = float(self.winnerParam[k]['param'])
-        #         self.winnerParam[k]['priceTick'] = self.ctaEngine.tickInfo[k]['priceTick']
+        #         self.winnerParam[k]['priceTick'] = self.tickInfo[k]['priceTick']
         ## =====================================================================
 
         ########################################################################
@@ -358,18 +356,18 @@ class OIStrategy(CtaTemplate):
         if self.tradingOrdersFailedInfo:
             self.writeCtaLog("昨日失败需要执行的订单\n%s\n%s\n%s" 
                 %('-'*80,
-                  pprint.pformat(self.tradingOrdersFailedInfo),
+                  pformat(self.tradingOrdersFailedInfo),
                   '-'*80))
         if self.tradingOrdersOpen:
             self.writeCtaLog("当日需要执行的开仓订单\n%s\n%s\n%s" 
                 %('-'*80,
-                  pprint.pformat(self.tradingOrdersOpen),
+                  pformat(self.tradingOrdersOpen),
                   '-'*80))
         ## =====================================================================
 
         ## =====================================================================
         try:
-            self.positionContracts = self.ctaEngine.mainEngine.dataEngine.positionInfo.keys()
+            self.positionContracts = self.dataEngine.positionInfo.keys()
         except:
             self.positionContracts = []
             
@@ -413,7 +411,7 @@ class OIStrategy(CtaTemplate):
                         for k in self.tradingOrdersOpen.keys()]):
             ####################################################################
 
-            if self.accountID not in ['SimNow_YY','YunYang1']:
+            if self.accountID not in ['YunYang1']:
                 ## -----------------------------------------------------------------
                 ## 第一个数据进来就直接下单，不用再等后面的数据
                 if self.tradingStartCounter <= 30:
@@ -445,7 +443,7 @@ class OIStrategy(CtaTemplate):
                 ## -----------------------------------------------------------------
             else:
                 ## ------------------------------------------------
-                if self.tradingStartSplit:            
+                if self.tradingSplit:            
                     tempOrderIDList = self.vtOrderIDListOpenSplit
                 elif self.tradingStart:
                     tempOrderIDList = self.vtOrderIDListOpen
@@ -468,13 +466,13 @@ class OIStrategy(CtaTemplate):
                     id[0:2] not in ['bu','cs','pb','c1','a1','b1',
                                     'v1','y1','l1','p1','i1',
                                     'FG','RM','OI','SM','SR','SF',
-                                    'TA','CY'] and 
+                                    'TA','CY','CF'] and 
                     m < self.tradingCloseMinute2-3):
                     tempPriceType = 'best'
                 else:
                     tempPriceType = 'last'
                 ## ----------------------------
-                if self.accountID not in ['SimNow_YY','YunYang1']:
+                if self.accountID not in ['YunYang1']:
                     ## -----------------------------------------
                     self.prepareTradingOrderSplit(
                         vtSymbol      = id,
@@ -606,7 +604,7 @@ class OIStrategy(CtaTemplate):
         self.stratTrade['InstrumentID'] = vtSymbol
         self.stratTrade['strategyID']   = self.strategyID
         self.stratTrade['tradeTime']    = datetime.now().strftime('%Y-%m-%d') + " " + self.stratTrade['tradeTime']
-        self.stratTrade['TradingDay']   = self.ctaEngine.tradingDate
+        self.stratTrade['TradingDay']   = self.tradingDate
 
         ## ---------------------------------------------------------------------
         if self.stratTrade['offset'] == u'开仓':
@@ -750,7 +748,7 @@ class OIStrategy(CtaTemplate):
                     # 获得 vtOrderID
                     tempFields = ['TradingDay','vtSymbol','vtOrderIDList','direction','volume']
                     self.tradingOrdersUpperLower[tempKey]['vtOrderIDList'] = ujson.dumps(self.tradingOrdersUpperLower[tempKey]['vtOrderIDList'])
-                    tempRes = pd.DataFrame([[self.tradingOrdersUpperLower[tempKey][k] for k in tempFields]], 
+                    tempRes = DataFrame([[self.tradingOrdersUpperLower[tempKey][k] for k in tempFields]], 
                                             columns = tempFields)
                     tempRes.insert(1,'strategyID', self.strategyID)
                     tempRes.rename(columns={'vtSymbol':'InstrumentID'}, inplace = True)
@@ -792,18 +790,16 @@ class OIStrategy(CtaTemplate):
             # if vtOrderID in list(set(self.vtOrderIDListClose) |
             #                    set(self.vtOrderIDListUpperLower) |
             #                    set(self.vtOrderIDListUpperLowerCum) |
-            #                    set(self.vtOrderIDListUpperLowerTempCum) |
             #                    set(self.vtOrderIDListWinner) |
             #                    set(self.vtOrderIDListTempWinner)):
             if vtOrderID in list(set(self.vtOrderIDListClose) |
                                set(self.vtOrderIDListUpperLower) |
-                               set(self.vtOrderIDListUpperLowerCum) |
-                               set(self.vtOrderIDListUpperLowerTempCum)):
+                               set(self.vtOrderIDListUpperLowerCum)):
                 self.processOffsetClose(self.stratTrade)
             ## -----------------------------------------------------------------
 
         ## ---------------------------------------------------------------------
-        tempTradingInfo = pd.DataFrame(
+        tempTradingInfo = DataFrame(
             [[self.stratTrade[k] for k in self.tradingInfoFields]], 
             columns = self.tradingInfoFields)
         self.updateTradingInfo(df = tempTradingInfo)
@@ -912,8 +908,8 @@ class OIStrategy(CtaTemplate):
             #         # fromHost = '192.168.1.135', 
             #         fromHost = globalSetting().vtSetting['mysqlHost'],
             #         toHost = '47.98.117.71', 
-            #         fromDB = self.ctaEngine.mainEngine.dataBase, 
-            #         toDB = self.ctaEngine.mainEngine.dataBase,
+            #         fromDB = self.dataBase, 
+            #         toDB = self.dataBase,
             #         tableName = tbl,
             #         condition = condition)
             ## -----------------------------------------------------------------
