@@ -157,13 +157,17 @@ cdef class MainEngine(object):
                     if datetime.now().hour in [8,9,20,21]:
                         if not self.sendMailStatus:
                             self.sendMailStatus = True
-                            hicloud.sendMail(accountName = globalSetting.accountName, 
-                                                content = u'CTP 账户登录失败')
+                            hicloud.sendMail(
+                                globalSetting.accountName,
+                                u'CTP 账户登录失败',
+                                'ERROR')
                             self.sendMailTime = datetime.now()
-                        elif ((datetime.now() - self.sendMailTime).seconds > 30 and 
+                        elif ((datetime.now() - self.sendMailTime).seconds > 60 and 
                               (self.sendMailCounter < 10)):
-                            hicloud.sendMail(accountName = globalSetting.accountName, 
-                                                content = u'CTP 账户登录失败')
+                            hicloud.sendMail(
+                                globalSetting.accountName,
+                                u'CTP 账户登录失败',
+                                'ERROR')
                             self.sendMailTime = datetime.now()
                             self.sendMailCounter += 1
                 ## -------------------------------------------------------------
@@ -513,6 +517,13 @@ cdef class DataEngine(object):
                                    'asset','shares']
         ########################################################################
 
+        ## -------------------------------
+        ## 发送邮件预警
+        self.sendMailTime = datetime.now()
+        self.sendMailStatus = False
+        self.sendMailContent = u''
+        self.sendMailCounter = 0 
+        ## -------------------------------
 
         # 读取保存在硬盘的合约数据
         self.loadContracts()
@@ -766,6 +777,7 @@ cdef class DataEngine(object):
         cdef dict tempPosInfo = {}
         # ----------------------------------------------------------------------
         if len(posInfo) != 0:
+            msg = u''
             for key in posInfo.keys():
                 if (posInfo[key]['position'] > 0) and (posInfo[key]['price'] != 0):
                     tempPosInfo[key] = {k:posInfo[key][k] for k in self.positionInfoFields}
@@ -781,6 +793,25 @@ cdef class DataEngine(object):
                         tempPosInfo[key]['positionPct'] = round(tempPosInfo[key]['positionPct'] * tempPosInfo[key]['position'] / self.accountInfo.balance * 100, 4)
                     else:
                         tempPosInfo[key]['positionPct'] = 0
+                    ## ---------------------------------------------------------
+                    if (tempPosInfo[key]['positionPct'] > 10):
+                        msg += u"账户 [%s] 合约 [%s] 持仓超过 %s!\n" % (globalSetting.accountName, key, tempPosInfo[key]['positionPct'])
+                    ## ---------------------------------------------------------
+            ## =================================================================
+            if msg:
+                self.writeLog(msg, INFO)
+                ## -------------------------------------------------------------
+                if not self.sendMailStatus:
+                    self.sendMailStatus = True
+                    self.sendMailTime = datetime.now()
+                    hicloud.sendMail(globalSetting.accountName, msg, 'WARN')
+                elif ((datetime.now() - self.sendMailTime).seconds > 300 and 
+                      (self.sendMailCounter < 5)):
+                    self.sendMailTime = datetime.now()
+                    self.sendMailCounter += 1
+                    hicloud.sendMail(globalSetting.accountName, msg, 'WARN')
+                ## -------------------------------------------------------------
+            ## =================================================================
         # ----------------------------------------------------------------------
         if len(tempPosInfo) != 0:
             self.accountPosition = pd.DataFrame(tempPosInfo).transpose()
