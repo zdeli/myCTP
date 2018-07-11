@@ -13,7 +13,6 @@ from vnpy.trader.vtEvent import *
 from vnpy.trader import vtFunction
 ## -----------------------------------------------------------------------------
 from logging import INFO, ERROR
-# import pandas as pd
 from pandas import DataFrame
 from pandas.io import sql
 
@@ -53,42 +52,6 @@ class HOStrategy(CtaTemplate):
     tickTimer    = {}                  # 计时器, 用于记录单个合约发单的间隔时间
     ## -------------------------------------------------------------------------
 
-    ## -------------------------------------------------------------------------
-    ## 各种交易订单的合成
-    ## 交易订单存放位置
-    ## 字典格式如下
-    ## 1. vtSymbol
-    ## 2. direction: buy, sell, short, cover
-    ## 3. volume
-    ## 4. TradingDay
-    ## 5. vtOrderIDList
-    ## -------------------------------------------------------------------------
-    tradingOrders           = {}       # 单日的订单
-    tradingOrdersOpen       = {}       # 当日开盘的订单
-    tradingOrdersClose      = {}       # 当日收盘的订单
-    tradingOrdersUpperLower = {}       # 以涨跌停价格的订单
-    tradingOrdersUpperLowerCum = {}    # 以涨跌停价格的订单 ==> 开盘前1分钟先累计
-    tradingOrdersFailedInfo = {}       # 上一个交易日没有完成的订单,需要优先处理
-    ## -------------------------------------------------------------------------
-    tradedOrders            = {}       # 当日订单完成的情况
-    tradedOrdersOpen        = {}       # 当日开盘完成的已订单
-    tradedOrdersClose       = {}       # 当日收盘完成的已订单
-    tradedOrdersFailedInfo  = {}       # 昨天未成交订单的已交易订单
-    tradedOrdersUpperLower  = {}       # 已经成交的涨跌停订单
-    ## -------------------------------------------------------------------------
-
-    ## -------------------------------------------------------------------------
-    ## 各种交易订单的合成
-    ## -------------------------------------------------------------------------
-    vtOrderIDList           = []       # 保存委托代码的列表
-    vtOrderIDListOpen       = []       # 开盘的订单
-    vtOrderIDListClose      = []       # 收盘的订单
-    vtOrderIDListFailedInfo = []       # 失败的合约订单存储
-    vtOrderIDListUpperLower = []        # 涨跌停价格成交的订单
-    vtOrderIDListUpperLowerCum = []     # 累计的涨跌停价格成交的订单:>> workingInfo
-    vtOrderIDListAll        = []       # 所有订单集合
-    ## -------------------------------------------------------------------------
-
     #----------------------------------------------------------------------
     def __init__(self, ctaEngine, setting):
         """Constructor"""
@@ -96,60 +59,15 @@ class HOStrategy(CtaTemplate):
         super(HOStrategy, self).__init__(ctaEngine, setting)
 
         ## =====================================================================
-        self.accountID = globalSetting.accountID
-        self.initialCapital = self.ctaEngine.mainEngine.initialCapital
-
-        self.openDiscount  = self.ctaEngine.mainEngine.openDiscountHO
-        self.closeDiscount = self.ctaEngine.mainEngine.closeDiscountHO
-
-        self.openAddTick   = self.ctaEngine.mainEngine.openAddTickHO
-        self.closeAddTick  = self.ctaEngine.mainEngine.closeAddTickHO
-        ## =====================================================================
-
-        ## =====================================================================
         ## 交易时点
         self.tradingStartCounter = 0
         self.tradingOpenHour    = [21,9]
         self.tradingOpenMinute1 = 0
-        self.tradingOpenMinute2 = 10
+        self.tradingOpenMinute2 = 20
 
         self.tradingCloseHour    = 14
         self.tradingCloseMinute1 = 50
         self.tradingCloseMinute2 = 59
-        ## =====================================================================
-
-        ## =====================================================================
-        ## 子订单的拆单比例实现
-        if self.initialCapital >= 0.8e7:
-            self.subOrdersLevel = {
-                              'level0':{'weight': 0.20, 'deltaTick': 0},
-                              'level1':{'weight': 0.45, 'deltaTick': 1},
-                              'level2':{'weight': 0.35, 'deltaTick': 2}
-                              }
-        else:
-            self.subOrdersLevel = {
-                              'level0':{'weight': 0.30, 'deltaTick': 0},
-                              'level1':{'weight': 0.70, 'deltaTick': 1},
-                              'level2':{'weight': 0, 'deltaTick': 2}
-                             }
-        self.totalOrderLevel = 1 + (len(self.subOrdersLevel) - 1) * 2
-        self.realOrderLevel = len(
-            [k for k in self.subOrdersLevel.keys() 
-                   if self.subOrdersLevel[k]['weight'] != 0]
-            )
-        ## =====================================================================
-
-        ## =====================================================================
-        if self.initialCapital >= 1.5e7:
-            self.randomNo = 10 + random.randint(-3,3)    ## 随机间隔多少秒再下单
-        elif self.initialCapital >= 1e7:
-            self.randomNo = 15 + random.randint(-3,3)    ## 随机间隔多少秒再下单
-        elif self.initialCapital >= 8e6:
-            self.randomNo = 20 + random.randint(-5,5)    ## 随机间隔多少秒再下单
-        elif self.initialCapital >= 5e6:
-            self.randomNo = 30 + random.randint(-5,5)    ## 随机间隔多少秒再下单
-        else:
-            self.randomNo = 45 + random.randint(-5,5)    ## 随机间隔多少秒再下单
         ## =====================================================================
 
         ## ===================================================================== 
@@ -161,43 +79,43 @@ class HOStrategy(CtaTemplate):
         # 
         ## ===================================================================== 
 
-        ## =====================================================================
-        ## 上一个交易日未成交订单
-        self.failedInfo = vtFunction.dbMySQLQuery(
-            self.ctaEngine.mainEngine.dataBase,
-            """
-            SELECT *
-            FROM failedInfo
-            WHERE strategyID = '%s'
-            """ %(self.strategyID))
-        self.processFailedInfo(self.failedInfo)
-
-        ## ---------------------------------------------------------------------
-        ## 查看当日已经交易的订单
-        ## ---------------------------------------------------------------------
-        # self.tradingInfo = vtFunction.dbMySQLQuery(
+        # ## =====================================================================
+        # ## 上一个交易日未成交订单
+        # self.failedInfo = vtFunction.dbMySQLQuery(
         #     self.ctaEngine.mainEngine.dataBase,
         #     """
         #     SELECT *
-        #     FROM tradingInfo
+        #     FROM failedInfo
+        #     WHERE strategyID = '%s'
+        #     """ %(self.strategyID))
+        # self.processFailedInfo(self.failedInfo)
+
+        # ## ---------------------------------------------------------------------
+        # ## 查看当日已经交易的订单
+        # ## ---------------------------------------------------------------------
+        # # self.tradingInfo = vtFunction.dbMySQLQuery(
+        # #     self.ctaEngine.mainEngine.dataBase,
+        # #     """
+        # #     SELECT *
+        # #     FROM tradingInfo
+        # #     WHERE strategyID = '%s'
+        # #     AND TradingDay = '%s'
+        # #     """ %(self.strategyID, self.ctaEngine.tradingDay))
+
+        # ## =====================================================================
+        # ## 涨跌停的订单
+        # temp = vtFunction.dbMySQLQuery(
+        #     self.ctaEngine.mainEngine.dataBase,
+        #     """
+        #     SELECT *
+        #     FROM UpperLowerInfo
         #     WHERE strategyID = '%s'
         #     AND TradingDay = '%s'
-        #     """ %(self.strategyID, self.ctaEngine.tradingDay))
-
-        ## =====================================================================
-        ## 涨跌停的订单
-        temp = vtFunction.dbMySQLQuery(
-            self.ctaEngine.mainEngine.dataBase,
-            """
-            SELECT *
-            FROM UpperLowerInfo
-            WHERE strategyID = '%s'
-            AND TradingDay = '%s'
-            """ %(self.strategyID, self.ctaEngine.tradingDate))
-        if len(temp):
-            for i in xrange(len(temp)):
-                self.vtOrderIDListUpperLower.extend(ast.literal_eval(temp.ix[i,'vtOrderIDList']))
-        ## =====================================================================
+        #     """ %(self.strategyID, self.ctaEngine.tradingDate))
+        # if len(temp):
+        #     for i in xrange(len(temp)):
+        #         self.vtOrderIDListUpperLower.extend(ast.literal_eval(temp.ix[i,'vtOrderIDList']))
+        # ## =====================================================================
 
         ########################################################################
         ## william
@@ -286,21 +204,42 @@ class HOStrategy(CtaTemplate):
             str tempPriceType
 
         ## =====================================================================
-        if (self.tradingStart and 
-            id in [self.tradingOrdersOpen[k]['vtSymbol'] 
-                   for k in self.tradingOrdersOpen.keys()]):
+        ## 开仓信号
+        if self.tradingStart:
             ## -----------------------------------------------------------------
-            if self.tradingSplit:            
-                tempOrderIDList = self.vtOrderIDListOpenSplit
-            else:
-                tempOrderIDList = self.vtOrderIDListOpen
+            if (id in [self.tradingOrdersOpen[k]['vtSymbol'] 
+                       for k in self.tradingOrdersOpen.keys()]):
+                ## -------------------------------------------------------------
+                if self.tradingSplit:            
+                    tempOrderIDList = self.vtOrderIDListOpenSplit
+                else:
+                    tempOrderIDList = self.vtOrderIDListOpen
 
-            self.prepareSplit(
-                vtSymbol = id,
-                tradingOrders = self.tradingOrdersOpen,
-                orderIDList = tempOrderIDList)
-            ## -----------------------------------------------------------------
-        ## ---------------------------------------------------------------------
+                self.prepareSplit(
+                    vtSymbol = id,
+                    tradingOrders = self.tradingOrdersOpen,
+                    orderIDList = tempOrderIDList)
+                ## -------------------------------------------------------------
+            if (id in [self.tradingOrdersClose[k]['vtSymbol'] 
+                       for k in self.tradingOrdersClose.keys()]):
+                ## -------------------------------------------------------------
+                tempDirection = [self.tradingOrdersClose[k]['direction']
+                                    for k in self.tradingOrdersClose.keys()
+                                    if self.tradingOrdersClose[k]['vtSymbol'] == id][0]
+
+                tempPriceType = 'upper' if tempDirection == 'sell' else 'lower'
+                ## -------------------------------------------------------------
+
+                self.prepareTradingOrder(
+                    vtSymbol      = id, 
+                    tradingOrders = self.tradingOrdersClose, 
+                    orderIDList   = self.vtOrderIDListUpperLower,
+                    priceType     = tempPriceType)
+                ## -------------------------------------------------------------
+        ## =====================================================================
+
+        ## =====================================================================
+        ## 当天尾盘的平仓信号
         elif ((self.tradingBetween or self.tradingEnd) and
               id in [self.tradingOrdersClose[k]['vtSymbol'] 
                      for k in self.tradingOrdersClose.keys()]):
@@ -327,11 +266,13 @@ class HOStrategy(CtaTemplate):
         ## =====================================================================
         ## william
         ## ---------------------------------------------------------------------
-        # if self.tradingOrdersFailedInfo and self.tradingStart:
-        #     self.prepareTradingOrder(vtSymbol      = id, 
-        #                              tradingOrders = self.tradingOrdersFailedInfo, 
-        #                              orderIDList   = self.vtOrderIDListFailedInfo,
-        #                              priceType     = 'chasing')
+        if self.tradingOrdersFailedInfo and self.tradingStart:
+            self.prepareTradingOrder(
+                vtSymbol      = id, 
+                tradingOrders = self.tradingOrdersFailedInfo, 
+                orderIDList   = self.vtOrderIDListFailedInfo,
+                priceType     = 'chasing',
+                addTick       = +1)
         ## =====================================================================
 
 
@@ -353,9 +294,9 @@ class HOStrategy(CtaTemplate):
         ## =====================================================================
         self.stratTrade = copy(trade.__dict__)
         self.stratTrade['InstrumentID'] = vtSymbol
-        self.stratTrade['strategyID']   = self.strategyID
-        self.stratTrade['tradeTime']    = datetime.now().strftime('%Y-%m-%d') + " " + self.stratTrade['tradeTime']
-        self.stratTrade['TradingDay']   = self.tradingDate
+        self.stratTrade['strategyID'] = self.strategyID
+        self.stratTrade['tradeTime'] = datetime.now().strftime('%Y-%m-%d') + " " + self.stratTrade['tradeTime']
+        self.stratTrade['TradingDay'] = self.tradingDate
 
         ## ---------------------------------------------------------------------
         if self.stratTrade['offset'] == u'开仓':
@@ -390,15 +331,15 @@ class HOStrategy(CtaTemplate):
             self.tradingOrdersOpen[tempKey]['volume'] -= self.stratTrade['volume']
             if self.tradingOrdersOpen[tempKey]['volume'] <= 0:
                 self.tradingOrdersOpen.pop(tempKey, None)
-                # self.tradedOrdersOpen[tempKey] = tempKey
+                self.tradedOrdersOpen[tempKey] = tempKey
             # ------------------------------------------------------------------
-        elif (vtOrderID in self.vtOrderIDListClose and 
+        elif (vtOrderID in self.vtOrderIDListClose + self.vtOrderIDListUpperLower and 
               tempKey in self.tradingOrdersClose.keys()):
             # ------------------------------------------------------------------
             self.tradingOrdersClose[tempKey]['volume'] -= self.stratTrade['volume']
             if self.tradingOrdersClose[tempKey]['volume'] <= 0:
                 self.tradingOrdersClose.pop(tempKey, None)
-                # self.tradedOrdersClose[tempKey] = tempKey
+                self.tradedOrdersClose[tempKey] = tempKey
             # ------------------------------------------------------------------
         elif (vtOrderID in self.vtOrderIDListFailedInfo and 
               tempKey in self.tradingOrdersFailedInfo.keys()):
@@ -419,12 +360,12 @@ class HOStrategy(CtaTemplate):
             ## 处理开仓的交易订单            
             self.processOffsetOpen(self.stratTrade)
             ## ------------------------------------
-        elif self.stratTrade['offset'] in [u'平仓', u'平昨', u'平今']:
+        elif (self.stratTrade['offset'] in [u'平仓', u'平昨', u'平今'] and 
+             vtOrderID in self.vtOrderIDListClose):
             ## -----------------------------------------------------------------
             ## 平仓只有在以下两个情况才处理
             ## 因为 failedInfo 已经预先处理过了
-            if self.stratTrade['vtOrderID'] in self.vtOrderIDListClose:
-                self.processOffsetClose(self.stratTrade)
+            self.processOffsetClose(self.stratTrade)
             ## -----------------------------------------------------------------
 
         ## ---------------------------------------------------------------------
@@ -439,7 +380,10 @@ class HOStrategy(CtaTemplate):
         ## 处理 MySQL 数据库的 tradingOrders
         ## 如果成交了，需要从这里面再删除交易订单
         ########################################################################
-        if vtOrderID in self.vtOrderIDListOpen + self.vtOrderIDListClose:
+        if (vtOrderID in self.vtOrderIDListOpen + 
+                         self.vtOrderIDListOpenSplit + 
+                         self.vtOrderIDListClose +
+                         self.vtOrderIDListUpperLower):
             self.updateTradingOrdersTable(self.stratTrade)
         ########################################################################
 
@@ -501,9 +445,18 @@ class HOStrategy(CtaTemplate):
                 self.updateWorkingInfo(self.tradingOrdersOpen, 'open')
                 self.updateWorkingInfo(self.tradingOrdersClose, 'close')
             if (h == 15 and self.trading):
+                ## -----------------------------------------
+                self.updateFailedInfo(
+                    tradingOrders = self.tradingOrdersOpen, 
+                    tradedOrders  = self.tradedOrdersOpen)
+                ## -----------------------------------------
+
+                ## -----------------------------------------
                 self.updateFailedInfo(
                     tradingOrders = self.tradingOrdersClose, 
                     tradedOrders  = self.tradedOrdersClose)
+                ## -----------------------------------------
+
 
     ## =========================================================================
     ## william
