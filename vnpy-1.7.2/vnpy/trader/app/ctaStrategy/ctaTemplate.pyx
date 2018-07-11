@@ -22,9 +22,7 @@ import talib
 from pandas import DataFrame
 from pandas.io import sql
 from datetime import datetime,time,timedelta
-# import time
 import math,random
-
 import re,ast
 import ujson
 from copy import copy
@@ -101,10 +99,20 @@ class CtaTemplate(object):
     ## -------------------------------------------------------------------------
 
     ## -------------------------------------------------------------------------
-    tradedOrders           = {}        # 当日订单完成的情况
-    tradedOrdersOpen       = {}        # 当日开盘完成的已订单
-    tradedOrdersClose      = {}        # 当日收盘完成的已订单
-    tradedOrdersFailedInfo = {}        # 昨天未成交订单的已交易订单
+    tradingOrders           = {}       # 单日的订单
+    tradingOrdersOpen       = {}       # 当日开盘的订单
+    tradingOrdersClose      = {}       # 当日收盘的订单
+    tradingOrdersUpperLower = {}       # 以涨跌停价格的订单
+    tradingOrdersUpperLowerCum = {}    # 以涨跌停价格的订单 ==> 开盘前1分钟先累计
+    tradingOrdersFailedInfo = {}       # 上一个交易日没有完成的订单,需要优先处理
+    ## -------------------------------------------------------------------------
+
+    ## -------------------------------------------------------------------------
+    tradedOrders            = {}       # 当日订单完成的情况
+    tradedOrdersOpen        = {}       # 当日开盘完成的已订单
+    tradedOrdersClose       = {}       # 当日收盘完成的已订单
+    tradedOrdersFailedInfo  = {}       # 昨天未成交订单的已交易订单
+    tradedOrdersUpperLower  = {}       # 已经成交的涨跌停订单
     ## -------------------------------------------------------------------------
 
     ## -------------------------------------------------------------------------
@@ -133,11 +141,11 @@ class CtaTemplate(object):
     vtOrderIDListAll   = []                   # 所有订单集合
 
     ## 子订单的拆单比例实现
-    subOrdersLevel = {'level0':{'weight': 0.30, 'deltaTick': 0},
-                      'level1':{'weight': 0.70, 'deltaTick': 1},
-                      'level2':{'weight': 0, 'deltaTick': 2}
-                     }
-    totalOrderLevel = 1 + (len(subOrdersLevel) - 1) * 2
+    # subOrdersLevel = {'level0':{'weight': 0.30, 'deltaTick': 0},
+    #                   'level1':{'weight': 0.70, 'deltaTick': 1},
+    #                   'level2':{'weight': 0, 'deltaTick': 2}
+    #                  }
+    # totalOrderLevel = 1 + (len(subOrdersLevel) - 1) * 2
 
     ## -------------------------------------------------------------------------
     ## 保存交易记录: tradingInfo
@@ -177,6 +185,17 @@ class CtaTemplate(object):
         ## =====================================================================
 
         ## =====================================================================
+        self.accountID = globalSetting.accountID
+        self.initialCapital = self.ctaEngine.mainEngine.initialCapital
+
+        self.openDiscount  = self.ctaEngine.mainEngine.openDiscountOI
+        self.closeDiscount = self.ctaEngine.mainEngine.closeDiscountOI
+
+        self.openAddTick   = self.ctaEngine.mainEngine.openAddTickOI
+        self.closeAddTick  = self.ctaEngine.mainEngine.closeAddTickOI
+        ## =====================================================================
+
+        ## =====================================================================
         ## 交易时点
         self.tradingDay     = self.ctaEngine.tradingDay
         self.lastTradingDay = self.ctaEngine.lastTradingDay
@@ -195,6 +214,40 @@ class CtaTemplate(object):
         self.randomNo            = 50 + random.randint(-5,5)    ## 随机间隔多少秒再下单
         
         self.tickInfo = self.ctaEngine.tickInfo
+        ## =====================================================================
+
+        ## =====================================================================
+        ## 子订单的拆单比例实现
+        if self.initialCapital >= 0.5e7:
+            self.subOrdersLevel = {
+                              'level0':{'weight': 0.20, 'deltaTick': 0},
+                              'level1':{'weight': 0.45, 'deltaTick': 1},
+                              'level2':{'weight': 0.35, 'deltaTick': 2}
+                              }
+        else:
+            self.subOrdersLevel = {
+                              'level0':{'weight': 0.30, 'deltaTick': 0},
+                              'level1':{'weight': 0.70, 'deltaTick': 1},
+                              'level2':{'weight': 0, 'deltaTick': 2}
+                             }
+        self.totalOrderLevel = 1 + (len(self.subOrdersLevel) - 1) * 2
+        self.realOrderLevel = len(
+            [k for k in self.subOrdersLevel.keys() 
+                   if self.subOrdersLevel[k]['weight'] != 0]
+            )
+        ## =====================================================================
+
+        ## =====================================================================
+        if self.initialCapital >= 1.5e7:
+            self.randomNo = 10 + random.randint(-3,3)    ## 随机间隔多少秒再下单
+        elif self.initialCapital >= 1e7:
+            self.randomNo = 15 + random.randint(-3,3)    ## 随机间隔多少秒再下单
+        elif self.initialCapital >= 8e6:
+            self.randomNo = 20 + random.randint(-5,5)    ## 随机间隔多少秒再下单
+        elif self.initialCapital >= 5e6:
+            self.randomNo = 30 + random.randint(-5,5)    ## 随机间隔多少秒再下单
+        else:
+            self.randomNo = 45 + random.randint(-5,5)    ## 随机间隔多少秒再下单
         ## =====================================================================
 
         ## =====================================================================
@@ -220,6 +273,45 @@ class CtaTemplate(object):
         conn.commit()
         conn.close()        
         ## =====================================================================
+
+        ## =====================================================================
+        ## 上一个交易日未成交订单
+        self.failedInfo = vtFunction.dbMySQLQuery(
+            self.dataBase,
+            """
+            SELECT *
+            FROM failedInfo
+            WHERE strategyID = '%s'
+            """ %(self.strategyID))
+        self.processFailedInfo(self.failedInfo)
+
+        ## ---------------------------------------------------------------------
+        ## 查看当日已经交易的订单
+        ## ---------------------------------------------------------------------
+        # self.tradingInfo = vtFunction.dbMySQLQuery(
+        #     self.ctaEngine.mainEngine.dataBase,
+        #     """
+        #     SELECT *
+        #     FROM tradingInfo
+        #     WHERE strategyID = '%s'
+        #     AND TradingDay = '%s'
+        #     """ %(self.strategyID, self.tradingDay))
+
+        ## =====================================================================
+        ## 涨跌停的订单
+        temp = vtFunction.dbMySQLQuery(
+            self.dataBase,
+            """
+            SELECT *
+            FROM UpperLowerInfo
+            WHERE strategyID = '%s'
+            AND TradingDay = '%s'
+            """ %(self.strategyID, self.tradingDate))
+        if len(temp):
+            for i in xrange(len(temp)):
+                self.vtOrderIDListUpperLower.extend(ast.literal_eval(temp.ix[i,'vtOrderIDList']))
+        ## =====================================================================
+
 
         ## =====================================================================
         # 设置策略的参数
@@ -654,13 +746,14 @@ class CtaTemplate(object):
             if ((not tradingOrders[i]['vtOrderIDList']) or 
                 (all(vtOrderID in tempFinishedOrders for 
                                   vtOrderID in tradingOrders[i]['vtOrderIDList']))):
-                self.sendTradingOrder(tradingOrders = tradingOrders,
-                                      orderDict     = tradingOrders[i],
-                                      orderIDList   = orderIDList,
-                                      priceType     = priceType,
-                                      price         = price,
-                                      addTick       = addTick,
-                                      discount      = discount)
+                self.sendTradingOrder(
+                    tradingOrders = tradingOrders,
+                    orderDict     = tradingOrders[i],
+                    orderIDList   = orderIDList,
+                    priceType     = priceType,
+                    price         = price,
+                    addTick       = addTick,
+                    discount      = discount)
             if (self.tradingEnd and 
                 ((datetime.now() - self.tickTimer[vtSymbol]).seconds > 3) and 
                 len(tradingOrders[i]['vtOrderIDList'])):
@@ -767,13 +860,14 @@ class CtaTemplate(object):
                 # 其他不用改动
                 # --------------------------------
                 if (not tradingOrders[i]['subOrders']['level0']['status']):
-                    self.sendTradingOrder(tradingOrders = tradingOrders,
-                                          orderDict     = tradingOrders[i],
-                                          orderIDList   = orderIDList,
-                                          priceType     = 'limit',
-                                          volume        = tradingOrders[i]['subOrders']['level0']['volume'],
-                                          price         = price_0)
-                    tradingOrders[i]['subOrders']['level0']['status'] = 'sended'
+                    sendStatus = self.sendTradingOrder(
+                        tradingOrders = tradingOrders,
+                        orderDict     = tradingOrders[i],
+                        orderIDList   = orderIDList,
+                        priceType     = 'limit',
+                        volume        = tradingOrders[i]['subOrders']['level0']['volume'],
+                        price         = price_0)
+                    tradingOrders[i]['subOrders']['level0']['status'] = sendStatus
                     return
                 elif (len(tempCanceledOrder) and self.tradingStartCounter >= 5 and 
                      tradingOrders[i]['subOrders']['level1']['status_u'] and 
@@ -783,12 +877,13 @@ class CtaTemplate(object):
                         any(x in tradingOrders[i]['vtOrderIDList'] for 
                             x in tempCanceledOrder.vtOrderID.values) and 
                        ((datetime.now() - self.tickTimer[vtSymbol]).seconds > 1)):
-                        self.sendTradingOrder(tradingOrders = tradingOrders,
-                                              orderDict     = tradingOrders[i],
-                                              orderIDList   = orderIDList,
-                                              priceType     = 'limit',
-                                              volume        = remainingVolume,
-                                              price         = price_0)
+                        self.sendTradingOrder(
+                            tradingOrders = tradingOrders,
+                            orderDict     = tradingOrders[i],
+                            orderIDList   = orderIDList,
+                            priceType     = 'limit',
+                            volume        = remainingVolume,
+                            price         = price_0)
                         return
                     ## ---------------------------------------------------------
                 # ---------------------------------------------------------------------------------            
@@ -812,14 +907,15 @@ class CtaTemplate(object):
 
                     ## ---------------------------------------------------------
                     if not tradingOrders[i]['subOrders'][l][status_quick]:
-                        self.sendTradingOrder(tradingOrders = tradingOrders,
-                                              orderDict     = tradingOrders[i],
-                                              orderIDList   = orderIDList,
-                                              priceType     = 'limit',
-                                              volume        = tradingOrders[i]['subOrders'][l]['volume'],
-                                              price         = price_0,
-                                              addTick       = deltaTick_quick)
-                        tradingOrders[i]['subOrders'][l][status_quick] = 'sended'
+                        sendStatus = self.sendTradingOrder(
+                            tradingOrders = tradingOrders,
+                            orderDict     = tradingOrders[i],
+                            orderIDList   = orderIDList,
+                            priceType     = 'limit',
+                            volume        = tradingOrders[i]['subOrders'][l]['volume'],
+                            price         = price_0,
+                            addTick       = deltaTick_quick)
+                        tradingOrders[i]['subOrders'][l][status_quick] = sendStatus
                         ## 如果真是的分档超过了 3 个层次
                         ## 则需要优先下快速成交的订单
                         if self.realOrderLevel >= 3:
@@ -832,24 +928,24 @@ class CtaTemplate(object):
                     # else:
                     #     ## -------------------------------------------------------------------------
                     #     if not tradingOrders[i]['subOrders']['level0']['status']:
-                    #         self.sendTradingOrder(tradingOrders = tradingOrders,
+                    #         sendStatus = self.sendTradingOrder(tradingOrders = tradingOrders,
                     #                               orderDict     = tradingOrders[i],
                     #                               orderIDList   = orderIDList,
                     #                               priceType     = 'limit',
                     #                               volume        = tradingOrders[i]['subOrders']['level0']['volume'],
                     #                               price         = price_0)
-                    #         tradingOrders[i]['subOrders']['level0']['status'] = 'sended'
+                    #         tradingOrders[i]['subOrders']['level0']['status'] = sendStatus
                     #         return
                     #     ## -------------------------------------------------------------------------
                     #     elif not tradingOrders[i]['subOrders'][l][status_slow]:
-                    #         self.sendTradingOrder(tradingOrders = tradingOrders,
+                    #         sendStatus = self.sendTradingOrder(tradingOrders = tradingOrders,
                     #                               orderDict     = tradingOrders[i],
                     #                               orderIDList   = orderIDList,
                     #                               priceType     = 'limit',
                     #                               volume        = tradingOrders[i]['subOrders'][l]['volume'],
                     #                               price         = price_0,
                     #                               addTick       = deltaTick_slow)
-                    #         tradingOrders[i]['subOrders'][l][status_slow] = 'sended'
+                    #         tradingOrders[i]['subOrders'][l][status_slow] = sendStatus
                     #         ## ----
                     #         ## 要不要继续下单
                     #         # return
@@ -857,7 +953,7 @@ class CtaTemplate(object):
                     #         ## -----------------------------------------------------
 
                     if not tradingOrders[i]['subOrders'][l][status_slow]:
-                        self.sendTradingOrder(
+                        sendStatus = self.sendTradingOrder(
                             tradingOrders = tradingOrders,
                             orderDict     = tradingOrders[i],
                             orderIDList   = orderIDList,
@@ -865,7 +961,7 @@ class CtaTemplate(object):
                             volume        = tradingOrders[i]['subOrders'][l]['volume'],
                             price         = price_0,
                             addTick       = deltaTick_slow)
-                        tradingOrders[i]['subOrders'][l][status_slow] = 'sended'
+                        tradingOrders[i]['subOrders'][l][status_slow] = sendStatus
                         ## -----------------------------------------------------
 
                 ## ---------------------------------------------------------------------------------
@@ -911,7 +1007,6 @@ class CtaTemplate(object):
         #        (datetime.now() - tradingOrders[tradingOrderList[0]]['lastTimer']).seconds < self.randomNo ):
         #     return
 
-        # allOrders = self.ctaEngine.mainEngine.getAllOrdersDataFrame()
         allOrders = self.dataEngine.getAllOrdersDataFrame()
 
         cdef:
@@ -1079,7 +1174,7 @@ class CtaTemplate(object):
                tempPrice < self.ctaEngine.lastTickDict[id]["lowerLimit"] * (1+0.01)) )):
             self.writeCtaLog(u'%s %s@%s 接近涨跌幅上限 ±1%%.' %(id, tempDirection, tempPrice), ERROR)
             self.tickTimer[id] = tradingOrders[id+'-'+tempDirection]['lastTimer'] = datetime.now() - timedelta(seconds = 180)
-            return
+            return None
         ## =====================================================================
 
         ## =====================================================================
@@ -1103,6 +1198,9 @@ class CtaTemplate(object):
         tradingOrders[id+'-'+tempDirection]['vtOrderIDList'].extend(vtOrderIDList)
 
         self.tickTimer[id]= datetime.now()
+        
+        ## 完成下单的标记
+        return 'sended'
         ## ---------------------------------------------------------------------
         
         ## ---------------------------------------------------------------------
@@ -1202,7 +1300,8 @@ class CtaTemplate(object):
         if (h == self.tradingCloseHour and 
             m in [self.tradingCloseMinute1, (self.tradingCloseMinute2)] and 
             10 <= s <= 20 and 
-            self.ctaEngine.mainEngine.multiStrategy and 
+            # self.ctaEngine.mainEngine.multiStrategy and 
+            self.strategyID == 'OIStrategy' and 
             (s == 19 or s % 5 == 0)):
             self.writeCtaLog('Rscript end.R')
             subprocess.call(['Rscript',
@@ -1331,7 +1430,7 @@ class CtaTemplate(object):
                                 WHERE strategyID = '%s'
                                 AND InstrumentID = '%s'
                                 AND orderType = '%s'
-                                """ %(self.strategyID,self.stratTrade['vtSymbol'],
+                                """ %(self.strategyID, self.stratTrade['vtSymbol'],
                                       tempDirection))
         if not len(mysqlInfoTradingOrders):
             return
@@ -1342,7 +1441,7 @@ class CtaTemplate(object):
         
         for i in xrange(len(mysqlInfoTradingOrders)):
             tempVolume = mysqlInfoTradingOrders.at[i,'volume'] - self.stratTrade['volume']
-            if tempVolume == 0:
+            if tempVolume <= 0:
                 cursor.execute("""
                                 DELETE FROM tradingOrders
                                 WHERE strategyID = %s
@@ -1511,8 +1610,7 @@ class CtaTemplate(object):
                            over = 'append',
                            sourceID = 'ctaTemplate.updateFailedInfo()')
         except:
-            self.writeCtaLog(u'failedInfo 失败订单 写入 MySQL 数据库出错',
-                                 logLevel = ERROR)
+            self.writeCtaLog(u'failedInfo 失败订单 写入 MySQL 数据库出错', ERROR)
         ## =====================================================================
 
     ############################################################################
