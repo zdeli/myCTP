@@ -52,13 +52,6 @@ cdef class MainEngine(object):
         self.printData = False
         ## -----------------------------------------
 
-        ## -------------------------------------------
-        ## william
-        ## 设置数据库连接初始状态
-        ## MySQL 数据库相关
-        # self.dbMySQLClient = None
-        ## ------------------------------------------
-
         # 接口实例
         self.gatewayDict = OrderedDict()  # 使用 mainEngine.gatwwayDict['CTP'] 获取
         self.gatewayDetailList = []
@@ -235,6 +228,7 @@ cdef class MainEngine(object):
         ## -----------------------------------------------------------------
         ## 先撤销所有的订单
         self.cancelAll()
+        sleep(1)
         ## -----------------------------------------------------------------
 
         CTPAccountPosInfo = {k:{u:self.dataEngine.positionInfo[k][u] for u in self.dataEngine.positionInfo[k].keys() if u in ['vtSymbol','position','direction']} for k in self.dataEngine.positionInfo.keys() if int(self.dataEngine.positionInfo[k]['position']) != 0}
