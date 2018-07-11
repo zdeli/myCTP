@@ -38,21 +38,6 @@ class OIStrategy(CtaTemplate):
     strategyID   = className
     author       = 'Lin HuanGeng'
     ############################################################################
-    
-    ## =========================================================================
-    ## william
-    ## 以下是我的修改
-    ############################################################################
-    ## -------------------------------------------------------------------------
-    ## 各种控制条件
-    ## 策略的基本变量，由引擎管理
-    trading      = False                    # 是否启动交易，由引擎管理
-    tradingStart = False                    # 开盘启动交易
-    tradingSplit = False
-    tradingBetween = False
-    tradingEnd   = False                    # 收盘开启交易
-    tickTimer    = {}                  # 计时器, 用于记录单个合约发单的间隔时间
-    ## -------------------------------------------------------------------------
 
     ## 是否使用 盈利平仓 的策略
     WINNER_STRATEGY = []
@@ -89,44 +74,6 @@ class OIStrategy(CtaTemplate):
         # 策略时方便（更多是个编程习惯的选择） 
         # 
         ## ===================================================================== 
-
-        ## =====================================================================
-        ## 上一个交易日未成交订单
-        # self.failedInfo = vtFunction.dbMySQLQuery(
-        #     self.dataBase,
-        #     """
-        #     SELECT *
-        #     FROM failedInfo
-        #     WHERE strategyID = '%s'
-        #     """ %(self.strategyID))
-        # self.processFailedInfo(self.failedInfo)
-
-        ## ---------------------------------------------------------------------
-        ## 查看当日已经交易的订单
-        ## ---------------------------------------------------------------------
-        # self.tradingInfo = vtFunction.dbMySQLQuery(
-        #     self.dataBase,
-        #     """
-        #     SELECT *
-        #     FROM tradingInfo
-        #     WHERE strategyID = '%s'
-        #     AND TradingDay = '%s'
-        #     """ %(self.strategyID, self.ctaEngine.tradingDay))
-
-        # ## =====================================================================
-        # ## 涨跌停的订单
-        # temp = vtFunction.dbMySQLQuery(
-        #     self.dataBase,
-        #     """
-        #     SELECT *
-        #     FROM UpperLowerInfo
-        #     WHERE strategyID = '%s'
-        #     AND TradingDay = '%s'
-        #     """ %(self.strategyID, self.tradingDate))
-        # if len(temp):
-        #     for i in xrange(len(temp)):
-        #         self.vtOrderIDListUpperLower.extend(ast.literal_eval(temp.ix[i,'vtOrderIDList']))
-        # ## =====================================================================
         
         # ## =====================================================================
         # ## 涨跌停的订单
