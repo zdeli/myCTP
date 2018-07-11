@@ -20,6 +20,7 @@ from vnpy.trader.vtGateway import *
 from vnpy.trader.language import text
 from vnpy.trader import vtFunction
 from vnpy.trader.vtObject import VtSubscribeReq, VtCancelOrderReq
+from vnpy.trader import hicloud
 
 ## -----------------------------------
 import pandas as pd
@@ -156,12 +157,12 @@ cdef class MainEngine(object):
                     if datetime.now().hour in [8,9,20,21]:
                         if not self.sendMailStatus:
                             self.sendMailStatus = True
-                            vtFunction.sendMail(accountName = globalSetting.accountName, 
+                            hicloud.sendMail(accountName = globalSetting.accountName, 
                                                 content = u'CTP 账户登录失败')
                             self.sendMailTime = datetime.now()
                         elif ((datetime.now() - self.sendMailTime).seconds > 30 and 
                               (self.sendMailCounter < 10)):
-                            vtFunction.sendMail(accountName = globalSetting.accountName, 
+                            hicloud.sendMail(accountName = globalSetting.accountName, 
                                                 content = u'CTP 账户登录失败')
                             self.sendMailTime = datetime.now()
                             self.sendMailCounter += 1
