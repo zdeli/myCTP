@@ -31,6 +31,7 @@ from vnpy.trader.vtConstant import *
 from vnpy.trader.vtObject import VtTickData, VtBarData
 from vnpy.trader.vtGateway import VtSubscribeReq, VtOrderReq, VtCancelOrderReq, VtLogData
 from vnpy.trader import vtFunction
+from vnpy.trader import hicloud
 
 from .ctaBase import *
 from .strategy import STRATEGY_CLASS
@@ -270,15 +271,12 @@ cdef class CtaEngine(object):
         if orderType == CTAORDER_BUY:
             req.direction = DIRECTION_LONG
             req.offset = OFFSET_OPEN
-            
         elif orderType == CTAORDER_SELL:
             req.direction = DIRECTION_SHORT
             req.offset = OFFSET_CLOSE
-                
         elif orderType == CTAORDER_SHORT:
             req.direction = DIRECTION_SHORT
             req.offset = OFFSET_OPEN
-            
         elif orderType == CTAORDER_COVER:
             req.direction = DIRECTION_LONG
             req.offset = OFFSET_CLOSE
@@ -834,13 +832,17 @@ cdef class CtaEngine(object):
 
             if not self.sendMailStatus:
                 self.sendMailStatus = True
-                vtFunction.sendMail(accountName = self.accountName, 
-                                    content = self.sendMailContent)
+                hicloud.sendMail(
+                    self.accountName,
+                    self.sendMailContent,
+                    'ERROR')
                 self.sendMailTime = datetime.now()
-            elif ((datetime.now() - self.sendMailTime).seconds > 30 and 
+            elif ((datetime.now() - self.sendMailTime).seconds > 60 and 
                   (self.sendMailCounter < 10)):
-                vtFunction.sendMail(accountName = self.accountName, 
-                                    content = self.sendMailContent)
+                hicloud.sendMail(
+                    self.accountName,
+                    self.sendMailContent,
+                    'ERROR')
                 self.sendMailTime = datetime.now()
                 self.sendMailContent = ''
                 self.sendMailCounter += 1
