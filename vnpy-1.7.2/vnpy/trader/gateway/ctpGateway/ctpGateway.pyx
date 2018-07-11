@@ -83,10 +83,6 @@ cdef dict statusMapReverse = {v:k for k,v in statusMap.items()}
 # 全局字典, key:symbol, value:exchange
 cdef dict symbolExchangeDict = {}
 
-# 夜盘交易时间段分隔判断
-NIGHT_TRADING = datetime(1900, 1, 1, 20).time()
-
-
 from vnpy.event import *
 from vnpy.trader.vtEvent import *
 from vnpy.trader.vtObject import *
@@ -1197,7 +1193,7 @@ class CtpTdApi(TdApi):
         account.closeProfit    = round(data['CloseProfit'],2)
         account.positionProfit = round(data['PositionProfit'],2)
         account.profit         = account.closeProfit + account.positionProfit
-        account.deposit        = round(data['Deposit'],2)
+        account.deposit        = round(data['Deposit'],2) + globalSetting.accountDepositEquityToday
         account.withdraw       = round(data['Withdraw'],2)
         account.netIncome      = account.deposit - account.withdraw
 
@@ -1208,21 +1204,33 @@ class CtpTdApi(TdApi):
         #     account.closeProfit = 0
         ## ----------------------------------------------
 
-        ## 当日申购的基金
-        ## 使用 preNav 计算份额
-        depositShares = int(account.deposit / self.preNav)
-        if depositShares != 0:
-            ## 
-            dfHeader = ['TradingDay','capital','price','shares','investor']
-            dfData = [self.tradingDay, account.deposit, self.preNav, depositShares, '']
-            df = pd.DataFrame([dfData], columns = dfHeader)
-            vtFunction.dbMySQLSend(dbName = globalSetting.accountID, 
-                                   query = """delete from funding
-                                              where TradingDay = '%s'""" % self.tradingDay)
-            vtFunction.saveMySQL(df = df, db = globalSetting.accountID, tbl = 'funding',
-                      over = 'append', sourceID = 'ctpGateway')
-        ## 当日应该计入的所有份额数量
-        account.shares = self.totalShares + depositShares
+        ## ----------------------
+        ## 从出入金的角度看，
+        ## 会比申购／赎回往后延迟一天
+        ## 1.出金: --> preNav
+        ## 2.入金: --> nav
+        ## ----------------------
+
+        ## ---------------------------------------------------------------------
+        withdrawShares = -int(account.withdraw / self.preNav)
+        if withdrawShares != 0:
+            dfData = [self.tradingDay, account.withdraw, self.preNav, withdrawShares, u'基金申购']
+            df = pd.DataFrame(
+                [dfData], 
+                columns = ['TradingDay','capital','price','shares','investor'])
+            vtFunction.dbMySQLSend(
+                dbName = globalSetting.accountID, 
+                query  = """delete from funding
+                            where TradingDay = '%s'""" % self.tradingDay)
+            vtFunction.saveMySQL(
+                df = df, 
+                db = globalSetting.accountID, 
+                tbl = 'funding',
+                over = 'append', 
+                sourceID = 'ctpGateway.onRspQryTradingAccount()')
+        ## 当日应该扣除的所有份额数量
+        account.shares = self.totalShares + withdrawShares
+        ## ---------------------------------------------------------------------
 
         ## 当日从期货账户扣费情况
         ## 需要手动核对
@@ -1241,20 +1249,30 @@ class CtpTdApi(TdApi):
         if account.asset:
             account.marginPct = round(account.margin / account.asset,4) * 100
             ## 当日净值
-            account.nav = round((account.asset + self.feeAll + account.banking) / account.shares,4)
-            ## -----------------------------------------------------------------
-            withdrawShares = -int(account.withdraw / account.nav)
-            if withdrawShares != 0:
-                ## 
-                dfHeader = ['TradingDay','capital','price','shares','investor']
-                dfData = [self.tradingDay, account.withdraw, account.nav, withdrawShares, '']
-                df = pd.DataFrame([dfData], columns = dfHeader)
+            account.nav = round((account.asset + self.feeAll + 
+                                 account.banking + account.withdraw) / account.shares,4)
+
+            ## 当日申购的基金
+            ## ---------------------------------------------------------------------
+            depositShares = int(account.deposit / account.nav)
+            if depositShares != 0:
+                dfData = [self.tradingDay, account.deposit, self.preNav, depositShares, u'基金赎回']
+                df = pd.DataFrame(
+                    [dfData], 
+                    columns = ['TradingDay','capital','price','shares','investor'])
                 vtFunction.dbMySQLSend(dbName = globalSetting.accountID, 
                                        query = """delete from funding
                                                   where TradingDay = '%s'""" % self.tradingDay)
-                vtFunction.saveMySQL(df = df, db = globalSetting.accountID, tbl = 'funding',
-                          over = 'append', sourceID = 'ctpGateway')
-            ## -----------------------------------------------------------------
+                vtFunction.saveMySQL(
+                    df = df,
+                    db = globalSetting.accountID,
+                    tbl = 'funding',
+                    over = 'append',
+                    sourceID = 'ctpGateway')
+            ## 当日应该计入的所有份额数量
+            account.shares = self.totalShares + depositShares
+            ## ---------------------------------------------------------------------
+
             account.shares = account.shares + withdrawShares
             ## 当日收益波动
             account.chgpct = round(account.nav / self.preNav - 1, 4) * 100
@@ -1635,7 +1653,7 @@ class CtpTdApi(TdApi):
         ## 打印拒单的信息信息
         tempFields = ['orderID','vtSymbol','price','direction','offset',
                       'tradedVolume','orderTime','status']
-        content = u"拒单的详细信息\n%s\n%s\n%s" %('-'*80,
+        content = u"拒单的详细信息\n%s\n%s\n%s\n" %('-'*80,
             pd.DataFrame([[order.__dict__[k] for k in tempFields]], columns = tempFields).to_string(index=False),
             '-'*80)
         self.writeLog(content, logLevel = ERROR)
@@ -2034,7 +2052,8 @@ class CtpTdApi(TdApi):
         # ## william
         # ## 打印撤单的详细信息
         ## ---------------------------------------------------------------------
-        content = u'撤单的详细信息\n%s%s\n%s' %('-'*80+'\n',
+        content = u'撤单的详细信息\n%s%s\n%s\n' %(
+            '-'*80+'\n',
             pd.DataFrame([req.values()], columns = req.keys()).to_string(index=False),
             '-'*80)
         self.writeLog(content)
