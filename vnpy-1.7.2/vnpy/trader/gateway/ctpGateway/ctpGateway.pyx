@@ -1262,19 +1262,19 @@ class CtpTdApi(TdApi):
             account.marginPct = round(account.margin / account.asset,4) * 100
             ## -----------------------------------------------------------------
             if account.marginPct > 70:
-                msg = u"""CTP账户 [%s] 
-                       保证金占比%s，超过限制70%%
+                msg = u"""账户 [%s] 
+                       保证金占比%s%%，超过限制70%%
                        """ %(globalSetting.accountName, account.marginPct)
                 if not self.sendMailStatus:
                     self.sendMailStatus = True
                     self.sendMailTime = datetime.now()
-                    self.writeRiskLog(msg)
+                    self.writeLog(msg)
                     hicloud.sendMail(globalSetting.accountName, msg, 'WARN')
                 elif ((datetime.now() - self.sendMailTime).seconds > 300 and 
                       (self.sendMailCounter < 5)):
                     self.sendMailTime = datetime.now()
                     self.sendMailCounter += 1
-                    self.writeRiskLog(msg)
+                    self.writeLog(msg)
                     hicloud.sendMail(globalSetting.accountName, msg, 'WARN')
             ## -----------------------------------------------------------------
             ## 当日净值
