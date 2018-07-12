@@ -263,19 +263,23 @@ cdef class RmEngine(object):
         ## =====================================================================
         ## 检查保证金比例
         if gatewayName in self.marginRatioDict and self.marginRatioDict[gatewayName] >= self.marginRatioLimit and orderReq.offset == u'开仓':
-            msg = u'%s接口账户 [%s] 保证金占比%s，超过限制%s' %(gatewayName, globalSetting.accountID,
-                    self.marginRatioDict[gatewayName], self.marginRatioLimit)
-            self.writeRiskLog(msg)
+            # msg = u"""%s接口账户 [%s] 
+            #        保证金占比%s，超过限制%s%%""" %(
+            #         gatewayName, globalSetting.accountID,
+            #         round(self.marginRatioDict[gatewayName]*100,2), 
+            #         round(self.marginRatioLimit*100, 2))
             ## -----------------------------------------------------------------
-            if not self.sendMailStatus:
-                self.sendMailStatus = True
-                self.sendMailTime = datetime.now()
-                hicloud.sendMail(globalSetting.accountName, msg)
-            elif ((datetime.now() - self.sendMailTime).seconds > 300 and 
-                  (self.sendMailCounter < 5)):
-                self.sendMailTime = datetime.now()
-                self.sendMailCounter += 1
-                hicloud.sendMail(globalSetting.accountName, msg)
+            # if not self.sendMailStatus:
+            #     self.sendMailStatus = True
+            #     self.sendMailTime = datetime.now()
+            #     self.writeRiskLog(msg)
+            #     hicloud.sendMail(globalSetting.accountName, msg, 'WARN')
+            # elif ((datetime.now() - self.sendMailTime).seconds > 300 and 
+            #       (self.sendMailCounter < 5)):
+            #     self.sendMailTime = datetime.now()
+            #     self.sendMailCounter += 1
+            #     self.writeRiskLog(msg)
+            #     hicloud.sendMail(globalSetting.accountName, msg, 'WARN')
             ## -----------------------------------------------------------------
             return False
         
