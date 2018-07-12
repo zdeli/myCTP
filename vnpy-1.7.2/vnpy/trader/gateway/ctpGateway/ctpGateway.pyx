@@ -18,7 +18,8 @@ from logging import *
 from pprint import pprint
 
 from vnpy.api.ctp import MdApi, TdApi, defineDict
-from vnpy.trader import vtFunction 
+from vnpy.trader import vtFunction
+from vnpy.trader import hicloud
 from vnpy.trader.vtConstant import *
 from .language import text
 from vnpy.trader.vtGlobal import globalSetting
@@ -800,6 +801,14 @@ class CtpTdApi(TdApi):
                       'position': datetime.now()}
         ## ---------------------------------------------------------------------
 
+        ## -------------------------------
+        ## 发送邮件预警
+        self.sendMailTime = datetime.now()
+        self.sendMailStatus = False
+        self.sendMailContent = u''
+        self.sendMailCounter = 0 
+        ## -------------------------------
+
         ## 上一个交易日的净值
         self.preNav_account = vtFunction.dbMySQLQuery(
                         globalSetting.accountID,
@@ -1247,7 +1256,27 @@ class CtpTdApi(TdApi):
         account.asset = account.balance + account.flowCapital
         ## ---------------------------------------------------------------------
         if account.asset:
+            ## --------------
+            ## 占用的保证金比例
+            ## --------------
             account.marginPct = round(account.margin / account.asset,4) * 100
+            ## -----------------------------------------------------------------
+            if account.marginPct > 70:
+                msg = u"""CTP账户 [%s] 
+                       保证金占比%s，超过限制70%%
+                       """ %(globalSetting.accountName, account.marginPct)
+                if not self.sendMailStatus:
+                    self.sendMailStatus = True
+                    self.sendMailTime = datetime.now()
+                    self.writeRiskLog(msg)
+                    hicloud.sendMail(globalSetting.accountName, msg, 'WARN')
+                elif ((datetime.now() - self.sendMailTime).seconds > 300 and 
+                      (self.sendMailCounter < 5)):
+                    self.sendMailTime = datetime.now()
+                    self.sendMailCounter += 1
+                    self.writeRiskLog(msg)
+                    hicloud.sendMail(globalSetting.accountName, msg, 'WARN')
+            ## -----------------------------------------------------------------
             ## 当日净值
             account.nav = round((account.asset + self.feeAll + 
                                  account.banking + account.withdraw) / account.shares,4)
