@@ -41,6 +41,8 @@ class OIStrategy(CtaTemplate):
 
     ## 是否使用 盈利平仓 的策略
     WINNER_STRATEGY = []
+    ## 均价下单的策略
+    VWAP_STRATEGY = ['YunYang1','TianMi2','SimNow_LXO']
     ## -------------------------------------------------------------------------
 
     #----------------------------------------------------------------------
@@ -274,7 +276,7 @@ class OIStrategy(CtaTemplate):
                         for k in self.tradingOrdersOpen.keys()]):
             ####################################################################
 
-            if self.accountID not in ['YunYang1','SimNow_FL']:
+            if self.accountID not in VWAP_STRATEGY:
                 ## -----------------------------------------------------------------
                 ## 第一个数据进来就直接下单，不用再等后面的数据
                 if self.tradingStartCounter <= 30:
@@ -335,7 +337,7 @@ class OIStrategy(CtaTemplate):
                 else:
                     tempPriceType = 'last'
                 ## ----------------------------
-                if self.accountID not in ['YunYang1','SimNow_FL']:
+                if self.accountID not in VWAP_STRATEGY:
                     ## -----------------------------------------
                     self.prepareTradingOrderSplit(
                         vtSymbol      = id,
