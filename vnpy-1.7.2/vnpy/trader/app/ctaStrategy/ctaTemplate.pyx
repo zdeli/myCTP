@@ -26,6 +26,7 @@ import math,random
 import re,ast
 import ujson
 from copy import copy
+from pprint import pprint
 
 ## -----------------------------------------------------------------------------
 reload(sys) # Python2.5 初始化后会删除 sys.setdefaultencoding 这个方法，我们需要重新载入   
@@ -132,6 +133,9 @@ class CtaTemplate(object):
     vtOrderIDListWinner     = []        # 止盈平仓单
     vtOrderIDListTempWinner = []        # 止盈平仓单
     vtOrderIDListAll        = []        # 所有订单集合
+    
+    lastVtOrderIDDict = {}              # key: vtSymbol+'-'+direction
+                                        # value: vtOrderID        
     ## -------------------------------------------------------------------------
     
     ## -------------------------------------------------------------------------
@@ -335,7 +339,7 @@ class CtaTemplate(object):
         ## =====================================================================
         self.ctaEngine.mainEngine.writeLog('-'*48, gatewayName = '')
         self.writeCtaLog(u'%s策略启动' %self.name)
-        self.ctaEngine.mainEngine.writeLog('-'*48, gatewayName = '')
+        self.ctaEngine.mainEngine.writeLog('-'*48+'\n', gatewayName = '')
         self.trading = True
         self.putEvent()
         
@@ -516,6 +520,8 @@ class CtaTemplate(object):
                 'vtSymbol'      : id,
                 'direction'     : tempOrders.at[i,'orderType'].encode('ascii','ignore'),
                 'volume'        : tempOrders.at[i,'volume'],
+                'totalVolume'   : tempOrders.at[i,'volume'],
+                'tradedVolume'  : 0,
                 'TradingDay'    : tempOrders.at[i,'TradingDay'],
                 'vtOrderIDList' : [],
                 'subOrders'     : {},
@@ -1034,7 +1040,7 @@ class CtaTemplate(object):
         elif self.tradingStart:
             remainingMinute = 1
             tempPriceType = 'last'
-            tempAddTick = 2
+            tempAddTick = +1
             tempDiscount = 0.0
         elif self.tradingBetween:
             remainingMinute = (self.tradingCloseMinute2-1 - m) / (self.randomNo / 60.0)
@@ -1044,7 +1050,7 @@ class CtaTemplate(object):
         elif self.tradingEnd:
             remainingMinute = 1
             tempPriceType = 'chasing'
-            tempAddTick = 2
+            tempAddTick = +2
             tempDiscount = 0.0
         else:
             return
@@ -1064,9 +1070,16 @@ class CtaTemplate(object):
                 if len(tempWorkingOrders) != 0:
                     for vtOrderID in tradingOrders[k]['vtOrderIDList']:
                         if vtOrderID in tempWorkingOrders.vtOrderID.values:
-                            self.cancelOrder(vtOrderID)
-                            tradingOrders[k]['lastTimer'] = datetime.now() - timedelta(seconds = self.randomNo - 1)
-                else:
+                            if (datetime.now() - tradingOrders[k]['lastTimer']).seconds > 1:
+                                self.cancelOrder(vtOrderID)
+                                tradingOrders[k]['lastTimer'] = datetime.now() - timedelta(seconds = self.randomNo - 1)
+                # else:
+                #     tradingOrders[k]['lastTimer'] = datetime.now() - timedelta(seconds = self.randomNo + 1)
+                elif (datetime.now() - tradingOrders[k]['lastTimer']).seconds > 1:
+                    ## --------
+                    ## 超过 3 秒
+                    ##　则开始追单
+                    ## --------
                     tradingOrders[k]['lastTimer'] = datetime.now() - timedelta(seconds = self.randomNo + 1)
             # --------------------------------------------------------
 
@@ -1077,6 +1090,20 @@ class CtaTemplate(object):
                 continue
 
             tempVolume = int(math.ceil(remainingVolume / remainingMinute))
+
+            ## -----------------------------------------------------------------
+            ## 如果不在撤销的 list 里面，则还是不能下单 
+            if (self.tradingStart and 
+                not (h in self.tradingOpenHour and m < self.tradingOpenMinute2) and 
+                k in self.lastVtOrderIDDict.keys()):
+                allOrders = self.dataEngine.getAllOrdersDataFrame()
+                tempCanceledOrders = allOrders[(allOrders['vtSymbol'] == vtSymbol) & 
+                               (allOrders['status'].isin([u'已撤销'])) & 
+                               (allOrders['vtOrderID'].isin(orderIDList))]
+                if self.lastVtOrderIDDict[k] not in tempCanceledOrders.vtOrderID.values:
+                    self.cancelOrder(self.lastVtOrderIDDict[k])
+                    continue
+            ## -----------------------------------------------------------------
 
             self.sendTradingOrder(tradingOrders = tradingOrders,
                                   orderDict     = tradingOrders[k],
@@ -1119,32 +1146,47 @@ class CtaTemplate(object):
         id = orderDict["vtSymbol"].encode('ascii','ignore')
         tempPriceTick = self.tickInfo[id]['priceTick']
         tempDirection = orderDict["direction"].encode('ascii','ignore')
+        
+        ## ---------------------------------------------------------------------
+        tempKey = id+'-'+tempDirection
+        ## 如果已经成交的数量超过原来应该下单的数量
+        ## 则不能再下单了
+        if tradingOrders[tempKey]['tradedVolume'] >= tradingOrders[tempKey]['totalVolume']:
+            self.writeCtaLog(
+                u"%s 超过策略信号的数量 %s, 不予下单." 
+                %(tempKey, tradingOrders[tempKey]['totalVolume']), 
+                ERROR)
+            return
+        ## ---------------------------------------------------------------------
+
         if volume:
             tempVolume = volume
         else:
             tempVolume = orderDict["volume"]
+
+        tick = self.ctaEngine.lastTickDict[id]
 
         ## =====================================================================
         ## 定义最佳价格
         ## ---------------------------------------------------------------------
         if priceType == "best":
             if tempDirection in ["buy","cover"]:
-                tempBestPrice = self.ctaEngine.lastTickDict[id]["bidPrice1"]
+                tempBestPrice = tick["bidPrice1"]
             elif tempDirection in ["sell","short"]:
-                tempBestPrice = self.ctaEngine.lastTickDict[id]["askPrice1"]
+                tempBestPrice = tick["askPrice1"]
         elif priceType == "chasing":
             if tempDirection in ["buy","cover"]:
-                tempBestPrice = self.ctaEngine.lastTickDict[id]["askPrice1"]
+                tempBestPrice = tick["askPrice1"]
             elif tempDirection in ["sell","short"]:
-                tempBestPrice = self.ctaEngine.lastTickDict[id]["bidPrice1"]
+                tempBestPrice = tick["bidPrice1"]
         elif priceType == "last":
-            tempBestPrice = self.ctaEngine.lastTickDict[id]["lastPrice"]
+            tempBestPrice = tick["lastPrice"]
         elif priceType == "open":
-            tempBestPrice = self.ctaEngine.lastTickDict[id]["openPrice"]
+            tempBestPrice = tick["openPrice"]
         elif priceType == "upper":
-            tempBestPrice = self.ctaEngine.lastTickDict[id]["upperLimit"]
+            tempBestPrice = tick["upperLimit"]
         elif priceType == "lower":
-            tempBestPrice = self.ctaEngine.lastTickDict[id]["lowerLimit"]
+            tempBestPrice = tick["lowerLimit"]
         elif priceType == "limit":  ## 指定价格下单
             if price:
                 tempBestPrice = price
@@ -1169,9 +1211,9 @@ class CtaTemplate(object):
         ## 则不要下单
         if (self.strategyID in ['OIStrategy'] and 
             ( (tempDirection == 'buy' and 
-               tempPrice > self.ctaEngine.lastTickDict[id]["upperLimit"] * (1-0.01)) or 
+               tempPrice > tick["upperLimit"] * (1-0.01)) or 
               (tempDirection == 'short' and 
-               tempPrice < self.ctaEngine.lastTickDict[id]["lowerLimit"] * (1+0.01)) )):
+               tempPrice < tick["lowerLimit"] * (1+0.01)) )):
             self.writeCtaLog(u'%s %s@%s 接近涨跌幅上限 ±1%%.' %(id, tempDirection, tempPrice), ERROR)
             self.tickTimer[id] = tradingOrders[id+'-'+tempDirection]['lastTimer'] = datetime.now() - timedelta(seconds = 180)
             return None
@@ -1193,14 +1235,23 @@ class CtaTemplate(object):
         ## =====================================================================
         ## 更新信息
         ## ---------------------------------------------------------------------
-        orderIDList.extend(vtOrderIDList)
+        if vtOrderIDList:
+            orderIDList.extend(vtOrderIDList)
 
-        tradingOrders[id+'-'+tempDirection]['vtOrderIDList'].extend(vtOrderIDList)
+            tradingOrders[tempKey]['vtOrderIDList'].extend(vtOrderIDList)
 
-        self.tickTimer[id]= datetime.now()
-        
-        ## 完成下单的标记
-        return 'sended'
+            ## ----------------
+            ## 最新的　vtOrderID
+            ## 用于追单
+            ## ----------------
+            self.lastVtOrderIDDict[tempKey] = max(vtOrderIDList)
+
+            self.tickTimer[id]= datetime.now()
+
+            ## 完成下单的标记
+            return 'sended'
+        else:
+            return None
         ## ---------------------------------------------------------------------
         
         ## ---------------------------------------------------------------------
@@ -1541,12 +1592,17 @@ class CtaTemplate(object):
     ############################################################################
     ## 更新失败未成交订单
     ############################################################################
-    def updateFailedInfo(self, dict tradingOrders, dict tradedOrders):
+    # def updateFailedInfo(self, dict tradingOrders, dict tradedOrders):
+    def updateFailedInfo(self, dict tradingOrders):
         """更新收盘后未成交的订单"""
 
         ## 提取失败订单
+        # self.failedOrders = {k:tradingOrders[k] 
+        #                      for k in tradingOrders.keys() if k not in tradedOrders.keys()}
+
         self.failedOrders = {k:tradingOrders[k] 
-                             for k in tradingOrders.keys() if k not in tradedOrders.keys()}
+                             for k in tradingOrders.keys() 
+                             if tradingOrders[k]['volume'] > 0}
         ## -----------------------------------------------------------------
         if not self.failedOrders:
             return
