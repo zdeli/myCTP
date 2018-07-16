@@ -33,7 +33,8 @@ pip install -r requirements.txt
 
 ## sudo pypy -m pip install -r requirements.txt
 
-pip install cython==0.25.2
+# pip install cython==0.25.2
+pip install cython
 
 ## =============================================================================
 rm -rf /home/william/anaconda2/lib/python2.7/site-packages/vnpy
