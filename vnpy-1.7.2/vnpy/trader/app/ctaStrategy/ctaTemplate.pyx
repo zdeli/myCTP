@@ -142,14 +142,6 @@ class CtaTemplate(object):
     vtOrderIDListClosePositionAll    = []     # 一键全平仓
     vtOrderIDListClosePositionSymbol = []     # 一键全平仓
     ## -------------------------------------------------------------------------
-    vtOrderIDListAll   = []                   # 所有订单集合
-
-    ## 子订单的拆单比例实现
-    # subOrdersLevel = {'level0':{'weight': 0.30, 'deltaTick': 0},
-    #                   'level1':{'weight': 0.70, 'deltaTick': 1},
-    #                   'level2':{'weight': 0, 'deltaTick': 2}
-    #                  }
-    # totalOrderLevel = 1 + (len(subOrdersLevel) - 1) * 2
 
     ## -------------------------------------------------------------------------
     ## 保存交易记录: tradingInfo
@@ -696,7 +688,7 @@ class CtaTemplate(object):
     ## william
     ## 限制价格在 UpperLimit 和 LowerLimit 之间
     ############################################################################
-    def priceBetweenUpperLower(self, price, str vtSymbol):
+    def priceBetweenUpperLower(self, price, vtSymbol):
         ## -----------------------------------------------------------
         cdef float tempPriceTick = self.tickInfo[vtSymbol]['priceTick']
         ## -----------------------------------------------------------
@@ -799,7 +791,9 @@ class CtaTemplate(object):
         ## ---------------------------------------------------------------------
         if not tempTradingList:
             return
-
+        ## -----------------
+        dtn = datetime.now()
+        ## -----------------
         cdef:
             int tempCanceledVolume
             int tempWorkingVolume, tempFinishedVolume
@@ -808,8 +802,8 @@ class CtaTemplate(object):
             str status_quick, status_slow
             float remainingMinute
             str i, l
-            int h = datetime.now().hour
-            int m = datetime.now().minute
+            int h = dtn.hour
+            int m = dtn.minute
         ## ---------------------------------------------------------------------
         allOrders = self.ctaEngine.mainEngine.getAllOrdersDataFrame()
         if len(allOrders):
@@ -882,7 +876,7 @@ class CtaTemplate(object):
                     if ( ((h in [9,21] and m < 2) or self.tradingStartCounter <= 30) and
                         any(x in tradingOrders[i]['vtOrderIDList'] for 
                             x in tempCanceledOrder.vtOrderID.values) and 
-                       ((datetime.now() - self.tickTimer[vtSymbol]).seconds > 1)):
+                       ((dtn - self.tickTimer[vtSymbol]).seconds > 1)):
                         self.sendTradingOrder(
                             tradingOrders = tradingOrders,
                             orderDict     = tradingOrders[i],
@@ -973,7 +967,7 @@ class CtaTemplate(object):
                 ## ---------------------------------------------------------------------------------
 
             elif (self.tradingBetween and 
-                 (datetime.now() - tradingOrders[i]['lastTimer']).seconds >= self.randomNo):
+                 (dtn - tradingOrders[i]['lastTimer']).seconds >= self.randomNo):
                 ## -------------------------------------------------------------
                 remainingMinute = (self.tradingCloseMinute2-1 - m) / (self.randomNo / 60.0)
                 if remainingMinute == 0:
@@ -992,7 +986,7 @@ class CtaTemplate(object):
                                       price         = price,
                                       addTick       = addTick,
                                       discount      = discount)
-                tradingOrders[i]['lastTimer'] = datetime.now()
+                tradingOrders[i]['lastTimer'] = dtn
 
 
     def prepareSplit(self, 
@@ -1015,13 +1009,17 @@ class CtaTemplate(object):
 
         allOrders = self.dataEngine.getAllOrdersDataFrame()
 
+        ## -----------------
+        dtn = datetime.now()
+        ## -----------------
+
         cdef:
             int tempWorkingVolume = 0
             float remainingMinute
             int tempAddTick
             float tempDiscount
             int tradingVolume, remainingVolume, tempVolume
-            int h = datetime.now().hour, m = datetime.now().minute
+            int h = dtn.hour, m = dtn.minute
 
         if len(allOrders):
             tempWorkingOrders = allOrders[(allOrders['vtSymbol'] == vtSymbol) & 
@@ -1035,7 +1033,7 @@ class CtaTemplate(object):
         if self.tradingSplit:
             remainingMinute = (self.tradingOpenMinute2 - m) / (self.randomNo / 60.0)
             tempPriceType = 'best'
-            tempAddTick = addTick
+            tempAddTick = addTick - 1
             tempDiscount = 0.0
         elif self.tradingStart:
             remainingMinute = 1
@@ -1069,24 +1067,23 @@ class CtaTemplate(object):
                 self.tradingEnd):
                 if len(tempWorkingOrders) != 0:
                     for vtOrderID in tradingOrders[k]['vtOrderIDList']:
-                        if vtOrderID in tempWorkingOrders.vtOrderID.values:
-                            if (datetime.now() - tradingOrders[k]['lastTimer']).seconds > 1:
-                                self.cancelOrder(vtOrderID)
-                                tradingOrders[k]['lastTimer'] = datetime.now() - timedelta(seconds = self.randomNo - 1)
-                # else:
-                #     tradingOrders[k]['lastTimer'] = datetime.now() - timedelta(seconds = self.randomNo + 1)
-                elif (datetime.now() - tradingOrders[k]['lastTimer']).seconds > 1:
+                        if (vtOrderID in tempWorkingOrders.vtOrderID.values and 
+                            (dtn - tradingOrders[k]['lastTimer']).seconds > 2):
+                            ## 下单时间超过 1s 才取消订单
+                            self.cancelOrder(vtOrderID)
+                            tradingOrders[k]['lastTimer'] = dtn - timedelta(seconds = self.randomNo - 1)
+                elif (dtn - tradingOrders[k]['lastTimer']).seconds > 1:
                     ## --------
                     ## 超过 3 秒
                     ##　则开始追单
                     ## --------
-                    tradingOrders[k]['lastTimer'] = datetime.now() - timedelta(seconds = self.randomNo + 1)
+                    tradingOrders[k]['lastTimer'] = dtn - timedelta(seconds = self.randomNo + 1)
             # --------------------------------------------------------
 
             remainingVolume = tradingOrders[k]['volume'] - tempWorkingVolume
 
             if ( remainingVolume <= 0 or
-                (datetime.now() - tradingOrders[k]['lastTimer']).seconds < self.randomNo ):
+                (dtn - tradingOrders[k]['lastTimer']).seconds < self.randomNo ):
                 continue
 
             tempVolume = int(math.ceil(remainingVolume / remainingMinute))
@@ -1112,7 +1109,7 @@ class CtaTemplate(object):
                                   volume        = tempVolume,
                                   addTick       = tempAddTick)
 
-            tradingOrders[k]['lastTimer'] = datetime.now()
+            tradingOrders[k]['lastTimer'] = dtn
             ## =============================================================================
 
 
@@ -1215,7 +1212,7 @@ class CtaTemplate(object):
               (tempDirection == 'short' and 
                tempPrice < tick["lowerLimit"] * (1+0.01)) )):
             self.writeCtaLog(u'%s %s@%s 接近涨跌幅上限 ±1%%.' %(id, tempDirection, tempPrice), ERROR)
-            self.tickTimer[id] = tradingOrders[id+'-'+tempDirection]['lastTimer'] = datetime.now() - timedelta(seconds = 180)
+            self.tickTimer[id] = tradingOrders[tempKey]['lastTimer'] = datetime.now() - timedelta(seconds = 180)
             return None
         ## =====================================================================
 
