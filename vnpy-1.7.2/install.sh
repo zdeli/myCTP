@@ -9,9 +9,9 @@ popd
 # bash build.sh
 # popd
 
-# pushd vnpy/api/xtp
-# bash build.sh
-# popd
+pushd vnpy/api/xtp
+bash build.sh
+popd
 
 # pushd vnpy/api/ib
 # bash build.sh
@@ -22,13 +22,18 @@ conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/f
 conda config --set show_channel_urls yes
 conda install -c quantopian ta-lib=0.4.9
 conda install libgcc
-conda uninstall pyqt
-conda install pyqt=4
+conda install pandas=0.18.0
+# conda uninstall pyqt
+# conda install pyqt=4
+
+pip install sqlalchemy==1.1.15
 
 #Install Python Modules
 pip install -r requirements.txt
 
 ## sudo pypy -m pip install -r requirements.txt
+
+pip install cython==0.25.2
 
 ## =============================================================================
 rm -rf /home/william/anaconda2/lib/python2.7/site-packages/vnpy
