@@ -77,8 +77,9 @@ class HOStrategy(CtaTemplate):
 
         ## =====================================================================
         self.tradingOrdersOpen = self.fetchTradingOrders(stage = 'open')
-        self.updateTradingOrdersVtOrderID(tradingOrders = self.tradingOrdersOpen,
-                                          stage = 'open')
+        self.updateTradingOrdersVtOrderID(
+            tradingOrders = self.tradingOrdersOpen,
+            stage = 'open')
         self.updateVtOrderIDList('open')
 
         if len(self.tradingOrdersOpen):
@@ -87,8 +88,9 @@ class HOStrategy(CtaTemplate):
 
         ## -----------------------------------------------------------------
         self.tradingOrdersClose = self.fetchTradingOrders(stage = 'close')
-        self.updateTradingOrdersVtOrderID(tradingOrders = self.tradingOrdersClose,
-                                          stage = 'close')
+        self.updateTradingOrdersVtOrderID(
+            tradingOrders = self.tradingOrdersClose,
+            stage = 'close')
         self.updateVtOrderIDList('close')
 
         if len(self.tradingOrdersClose):
@@ -276,17 +278,21 @@ class HOStrategy(CtaTemplate):
             tempKey in self.tradingOrdersOpen.keys()):
             # ------------------------------------------------------------------
             self.tradingOrdersOpen[tempKey]['volume'] -= self.stratTrade['volume']
+            ## 已成交的订单 volume 需要增加
+            self.tradingOrdersOpen[tempKey]['tradedVolume'] += self.stratTrade['volume']
             if self.tradingOrdersOpen[tempKey]['volume'] <= 0:
                 self.tradingOrdersOpen.pop(tempKey, None)
-                self.tradedOrdersOpen[tempKey] = tempKey
+                # self.tradedOrdersOpen[tempKey] = tempKey
             # ------------------------------------------------------------------
         elif (vtOrderID in self.vtOrderIDListClose + self.vtOrderIDListUpperLower and 
               tempKey in self.tradingOrdersClose.keys()):
             # ------------------------------------------------------------------
             self.tradingOrdersClose[tempKey]['volume'] -= self.stratTrade['volume']
+            ## 已成交的订单 volume 需要增加
+            self.tradingOrdersClose[tempKey]['tradedVolume'] += self.stratTrade['volume']
             if self.tradingOrdersClose[tempKey]['volume'] <= 0:
                 self.tradingOrdersClose.pop(tempKey, None)
-                self.tradedOrdersClose[tempKey] = tempKey
+                # self.tradedOrdersClose[tempKey] = tempKey
             # ------------------------------------------------------------------
         elif (vtOrderID in self.vtOrderIDListFailedInfo and 
               tempKey in self.tradingOrdersFailedInfo.keys()):
@@ -353,12 +359,12 @@ class HOStrategy(CtaTemplate):
         ## -----------------------
 
         ## -----------------------
-        n = datetime.now()
+        dtn = datetime.now()
         ## -----------------------
         cdef:
-            int h = n.hour
-            int m = n.minute
-            int s = n.second
+            int h = dtn.hour
+            int m = dtn.minute
+            int s = dtn.second
         if (s % 5 != 0):
             return
         ## -----------------------
@@ -393,15 +399,11 @@ class HOStrategy(CtaTemplate):
                 self.updateWorkingInfo(self.tradingOrdersClose, 'close')
             if (h == 15 and self.trading):
                 ## -----------------------------------------
-                self.updateFailedInfo(
-                    tradingOrders = self.tradingOrdersOpen, 
-                    tradedOrders  = self.tradedOrdersOpen)
+                self.updateFailedInfo(self.tradingOrdersOpen)
                 ## -----------------------------------------
 
                 ## -----------------------------------------
-                self.updateFailedInfo(
-                    tradingOrders = self.tradingOrdersClose, 
-                    tradedOrders  = self.tradedOrdersClose)
+                self.updateFailedInfo(self.tradingOrdersClose)
                 ## -----------------------------------------
 
 
