@@ -10,6 +10,7 @@ import decimal
 import re
 from datetime import datetime
 from shutil import copyfile
+from math import isnan
 
 import pandas as pd
 import MySQLdb
@@ -33,7 +34,7 @@ cpdef safeUnicode(value):
     """检查接口数据潜在的错误，保证转化为的字符串正确"""
     # 检查是数字接近0时会出现的浮点数上限
     if type(value) is int or type(value) is float:
-        if value > MAX_NUMBER:
+        if value > MAX_NUMBER or isnan(value):
             value = 0
 
     # 检查防止小数点位过多
@@ -193,7 +194,7 @@ cpdef dbMySQLSync(fromHost, toHost, str fromDB, str toDB, tableName = '', condit
     ## condition 格式如下
     ## "--where='TradingDay = {}'".format(stratOI.tradingDay)
     ## ------------------------------------------------------
-    cmd = '''mysqldump -h '{fromHost}' -ufl -pabc@123 --opt --compress {fromDB} {tableName} {condition} | mysql -h '{toHost}' -ufl -pabc@123 {toDB}'''.format(
+    cmd = '''mysqldump -h '{fromHost}' -utrader -pi520hicloud --opt --compress {fromDB} {tableName} {condition} | mysql -h '{toHost}' -utrader -pi520hicloud {toDB}'''.format(
         fromHost = fromHost,
         toHost = toHost,
         fromDB = fromDB, 
@@ -342,7 +343,7 @@ cpdef vetifyIP(ip, int count = 1, timeout = 1):
 ############################################################################
 ## 发送邮件通知
 ############################################################################
-cpdef sendMail(accountName, content):
+cpdef sendMail(accountName, content, level = 'INFO'):
     """发送邮件通知给：汉云交易员"""
     cdef:
         list receiversMain = ['fl@hicloud-investment.com']
@@ -355,7 +356,7 @@ cpdef sendMail(accountName, content):
     ## 显示:收件人
     message['To']   =  Header('汉云交易员', 'utf-8')
     ## 主题
-    subject = tradingDay() + '：' + accountName + u'~~ 启禀大王，你家后院着火了 ~~'
+    subject = tradingDay() + " <" + level + "> " + accountName
     message['Subject'] = Header(subject, 'utf-8')
 
     ## ---------------------------------------------------------------------
