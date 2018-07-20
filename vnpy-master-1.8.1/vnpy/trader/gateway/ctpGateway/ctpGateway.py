@@ -18,7 +18,7 @@ from vnpy.trader.vtGateway import *
 from vnpy.trader.vtFunction import getJsonPath, getTempPath
 from vnpy.trader.vtConstant import GATEWAYTYPE_FUTURES
 from .language import text
-
+from vnpy.trader.vtGlobal import globalSetting
 
 # 以下为一些VT类型和CTP类型的映射字典
 # 价格类型映射
@@ -794,6 +794,7 @@ class CtpTdApi(TdApi):
     
         # 账户代码
         account.accountID = data['AccountID']
+        account.accountName = globalSetting.accountName
         account.vtAccountID = '.'.join([self.gatewayName, account.accountID])
     
         # 数值相关
